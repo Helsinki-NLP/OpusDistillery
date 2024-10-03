@@ -119,14 +119,21 @@ def main():
     with open(args.filein, 'r', encoding='utf-8') as infile:
         text = infile.readlines()
 
-    sentence_ids = list(range(len(text)))  # Create a list of sentence IDs (0, 1, 2, ...)
-
-    # Format sentences with prompt
-    formatted_text = [prompt.format(src_lang=src_lang, tgt_lang=tgt_lang, source=t) for t in text]
+    if "indictrans" in model_name:
+        print("IndicTrans model found! Preprocessing sentences with IndicProcessor...")
+        from IndicTransToolkit import IndicProcessor
+        ip = IndicProcessor(inference=True)
+        text = ip.preprocess_batch(text, src_lang=src_lang, tgt_lang=tgt_lang)
+        print("Done!")
+    else:
+        # Format sentences with prompt
+        text = [prompt.format(src_lang=src_lang, tgt_lang=tgt_lang, source=t) for t in text]
 
     # Tokenize all the inputs at once
-    tokenized_inputs = tokenizer(formatted_text, return_tensors='pt', padding=True)
-
+    tokenized_inputs = tokenizer(text, truncation=True, padding="longest", return_tensors="pt")
+    
+    sentence_ids = list(range(len(text)))  # Create a list of sentence IDs (0, 1, 2, ...)
+    
     # Create the dataset with tokenized inputs and sentence IDs
     dataset = TokenizedDataset(tokenized_inputs, sentence_ids)
 
@@ -137,7 +144,7 @@ def main():
     rank = accelerator.process_index
     temp_file = f"{args.fileout}.rank{rank}.tmp"  # Create a temporary file for each process
 
-    dataloader = DataLoader(dataset, batch_size=args.batchsize, shuffle=False)
+    dataloader = DataLoader(dataset, batch_size=ast.literal_eval(args.batchsize), shuffle=False)
 
     dataloader = accelerator.prepare(dataloader) # Prepare dataset for distributed inference
     model = accelerator.prepare(model)  # Prepare model for distributed inference
@@ -155,18 +162,35 @@ def main():
             sentence_ids = batch.pop('sentence_id').tolist()  # Extract sentence IDs from the batch
 
             augmented_sentence_ids = [x for x in sentence_ids for _ in range(num_return_sequences)]
-
-            # Generate output
-            translated_batch = model.module.generate(
-                **batch,
-                num_return_sequences=num_return_sequences,
-                num_beams=num_return_sequences,
-                **config,
-            )
             
-            # Decode the output
-            translated_batch = tokenizer.batch_decode(translated_batch, skip_special_tokens=True)
-
+            with torch.no_grad():
+                if "indictrans" in model_name:
+                    # Generate output
+                    print("Translating...!")
+                    translated_batch = model.generate(
+                        **batch,
+                        num_return_sequences=num_return_sequences,
+                        num_beams=num_return_sequences,
+                        **config,
+                    )
+                    print("Translations done!")
+                    print("Detokenizing...")
+                    with tokenizer.as_target_tokenizer():
+                        translated_batch = tokenizer.batch_decode(translated_batch.detach().cpu().tolist(), skip_special_tokens=True, clean_up_tokenization_spaces=True)
+                    print("Done!")
+                else:
+                    # Generate output
+                    translated_batch = model.module.generate(
+                        **batch,
+                        num_return_sequences=num_return_sequences,
+                        num_beams=num_return_sequences,
+                        **config,
+                    )
+                
+                    # Decode the output
+                    translated_batch = tokenizer.batch_decode(translated_batch, skip_special_tokens=True)
+            
+            print(translated_batch)
             # Write each translated sentence to the buffer
             for id, sentence in zip(augmented_sentence_ids,translated_batch):
                 #source_id = round(i/num_return_sequences)+sentence_counter
