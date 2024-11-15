@@ -70,10 +70,10 @@ def marian_best_bleu(args,score_function):
         texts = []
         while True:
             if prev_line:
-                fields = prev_line.rstrip().split(" ||| ")
+                fields = prev_line.rstrip().split(" |||")
                 idx = int(fields[0])
                 if idx == i:
-                    texts.append(fields[1])
+                    texts.append(fields[1].lstrip())
                 else:
                     break
             prev_line = next(args.nbest, None)
