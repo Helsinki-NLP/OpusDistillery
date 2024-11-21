@@ -729,7 +729,8 @@ if huggingface:
         "langtags": hf_langtags,
         "decoder_config": hf_config,
         "batch_size": hf_batchsize,
-        "gpus_num": gpus_num}
+        "gpus_num": gpus_num,
+        "ct2": hf_ct2}
 
     module translate_hf:
         snakefile: "rules/translate_hf.smk"

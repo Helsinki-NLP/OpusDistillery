@@ -99,26 +99,6 @@ def preprocess_in_batches(text, batch_size, src_lang, tgt_lang, processor, logfi
     
     return processed_text
 
-def merge_temp_files(output_file, num_processes, num_return_sequences):
-    from collections import defaultdict
-
-    all_sentences = defaultdict(list)
-
-    # Collect sentences by their ID
-    for rank in range(num_processes):
-        temp_file = f"{output_file}.rank{rank}.tmp"
-        with open(temp_file, 'r', encoding='utf-8') as infile:
-            for line in infile:
-                sentence_id = line.split(' ||| ')[0]  # Get the sentence ID
-                all_sentences[sentence_id].append(line.strip())
-        os.remove(f"{output_file}.rank{rank}.tmp")
-
-    # Write the sorted sentences to the output file, keeping only the first 8 for each ID
-    with open(output_file, 'w', encoding='utf-8') as outfile:
-        for sentence_id, sentences in sorted(all_sentences.items(), key=lambda x: int(x[0])):
-            for sentence in sentences[:num_return_sequences]:  # Keep only the first 8 sentences for each ID
-                outfile.write(f"{sentence}\n")
-
 def main():
     args = parse_args()
     os.environ['HF_HOME'] = args.modeldir
@@ -160,7 +140,7 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=True)
     print(f"Tokenizer loaded!", file=logfile, flush=True)
 
-    num_return_sequences = 8
+    num_return_sequences = 1
     batch_size = ast.literal_eval(args.batchsize)
 
     if args.config == "default":
@@ -251,7 +231,7 @@ def main():
             with torch.no_grad():
                 if "indictrans" in model_name:
                     # Generate output
-                    translated_batch = model.generate(
+                    translated_batch = model.module.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
@@ -312,11 +292,6 @@ def main():
     print(f"{translations_per_second:.2f} translations/second", file=logfile, flush=True)
 
     accelerator.wait_for_everyone()
-
-    if accelerator.is_main_process:
-        merge_temp_files(args.fileout, accelerator.num_processes, num_return_sequences)
-        print(f"Merged all files into {args.fileout}", file=logfile, flush=True)
-
 
 if __name__ == "__main__":
     main()

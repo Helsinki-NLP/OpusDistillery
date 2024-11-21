@@ -1,7 +1,7 @@
 # CSC Mahti
 single-gpu-partition: gpusmall
 multi-gpu-partition: gpumedium
-cpu-partition: small
+cpu-partition: medium
 cpu-account: project_2005815
 gpu-account: project_2005815
 time-limit: "36:00:00"

@@ -244,6 +244,7 @@ if "huggingface" in config["experiment"]:
     hf_config = config['experiment']['huggingface'].get('config','default')
     hf_batchsize = config['experiment']['huggingface'].get('batch_size','8')
     hf_langtags = config['experiment']['huggingface'].get('lang_tags',dict())
+    hf_ct2 = config['experiment']['huggingface'].get('ct2','False')
     huggingface = True
     train_student_dir = f"{merged}/{{langpair}}"
 else:
