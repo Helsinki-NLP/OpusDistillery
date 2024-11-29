@@ -18,13 +18,13 @@ if config_file == "default": #if a no configuration is given, use default
         'languages': [src_lang, tgt_lang]
     }},
     {'LengthRatioFilter': {
-        'unit': 'char'
+        'name': 'word',
+        'unit': 'word'
     }},
     {'NonZeroNumeralsFilter': {}},
     {'TerminalPunctuationFilter': {}},
     {'RepetitionFilter': {}},
     {'LengthFilter': {
-        'unit': 'char',
         'min_length': 3,
 		'max_length': 100
     }}
