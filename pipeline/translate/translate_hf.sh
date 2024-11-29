@@ -27,13 +27,13 @@ echo "### Translation started"
 
 accelerate launch --mixed_precision="fp16" pipeline/translate/translate_hf.py \
             "${filein}" "${fileout}" "${modelname}" "${modeldir}" "${src_lang}" "${trg_lang}" \
-            "${modelclass}" "${langinfo}" "${prompt}" "${langtags}" "${decoder_config}" "${batch_size}" "${log}" >> "${log}.hf" 2>&1
+            "${modelclass}" "${langinfo}" "${prompt}" "${langtags}" "${config}" "${batch_size}" "${logfile}" >> "${logfile}.hf" 2>&1
         
 echo "### Translations done!"
 
 echo "### Sorting started"
 
-cat $fileout.rank*.tmp | sort -n -t '|' -k 1,1 -o $fileout
+cat $fileout.rank*.tmp | sort -n -t '|' -k 1,1 | uniq > $fileout
 rm $fileout.rank*.tmp
 
 echo "### Sorting done!"
