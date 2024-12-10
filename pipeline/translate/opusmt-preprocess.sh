@@ -49,14 +49,15 @@ else
     echo "source file is not gzipped"
     out_file=$1${model_index_suffix}.opusmt
     if [ $o2m_teacher == "True" ]; then
-        while IFS= read -r line; do
-                # Get the language tag
-                target_lang_token="$(echo "$line" | egrep -o "^>>[a-z]{2,3}<< ")"
-                # Remove it from the sentence
-                line="$(echo "$line" | sed "s/$target_lang_token//")"
-                # Encode and paste
-                echo $line | pipeline/translate/preprocess.sh "${model_dir}/${spm_name}" | sed -e "s/^/${target_lang_token}/" >> $out_file
-        done < $source_file
+        # Get language tag
+        target_lang_token="$(head -n 1 "$source_file" | egrep -o -E "^>>[a-z]{2,3}<< ")"
+        echo "Target language token: $target_lang_token"
+        echo "Started tokenization..."
+        sed "s/^$target_lang_token//" $source_file | pipeline/translate/preprocess_2.sh "${model_dir}/${spm_name}" > $source_file${model_index_suffix}.opusmt
+        echo "Tokenization done!"
+        echo "Adding target language tag again..."
+        sed -i "s/^/$target_lang_token/" $source_file${model_index_suffix}.opusmt
+        echo "Done!"
     else
         pipeline/translate/preprocess.sh "${model_dir}/${spm_name}" < $1 > $1${model_index_suffix}.opusmt
     fi
