@@ -53,7 +53,7 @@ else
         target_lang_token="$(head -n 1 "$source_file" | egrep -o -E "^>>[a-z]{2,3}<< ")"
         echo "Target language token: $target_lang_token"
         echo "Started tokenization..."
-        sed "s/^$target_lang_token//" $source_file | pipeline/translate/preprocess_2.sh "${model_dir}/${spm_name}" > $source_file${model_index_suffix}.opusmt
+        sed "s/^$target_lang_token//" $source_file | pipeline/translate/preprocess.sh "${model_dir}/${spm_name}" > $source_file${model_index_suffix}.opusmt
         echo "Tokenization done!"
         echo "Adding target language tag again..."
         sed -i "s/^/$target_lang_token/" $source_file${model_index_suffix}.opusmt
