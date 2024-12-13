@@ -39,8 +39,8 @@ def split_list_into_sublists(input_list, sublist_size=1):
 # Define a function to translate a batch using a specific translator
 def translate_batch(batch, translator, tokenizer, tgt_lang, model_name, batch_size=64):
     tokenized_batch = [tokenizer.convert_ids_to_tokens(tokenizer.encode(text)) for text in batch]
-    tgt_prefix_list = [[tgt_lang]] * len(tokenized_batch)
     if 'nllb' in model_name:
+        tgt_prefix_list = [[tgt_lang]] * len(tokenized_batch)
         results = translator.translate_batch(tokenized_batch, target_prefix=tgt_prefix_list, beam_size=8, num_hypotheses=8, batch_type="tokens", max_batch_size=batch_size)
     else:
         results = translator.translate_batch(tokenized_batch, beam_size=8, num_hypotheses=8, batch_type="tokens", max_batch_size=batch_size)
