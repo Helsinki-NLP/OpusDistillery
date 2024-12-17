@@ -12,6 +12,7 @@ import torch
 import ast
 import queue
 from tqdm import tqdm
+from IndicTransToolkit import IndicProcessor
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Translate text using Hugging Face pipeline with Ctranslate implementation.")
@@ -37,9 +38,12 @@ def split_list_into_sublists(input_list, sublist_size=1):
     return [input_list[i:i + sublist_size] for i in range(0, len(input_list), sublist_size)]
 
 # Define a function to translate a batch using a specific translator
-def translate_batch(batch, translator, tokenizer, tgt_lang, model_name, batch_size=64):
+def translate_batch(batch, translator, tokenizer, src_lang, tgt_lang, model_name, batch_size=64):
+    if "indictrans" in model_name:
+        ip = IndicProcessor(inference=True)
+        batch = ip.preprocess_batch(batch, src_lang=src_lang, tgt_lang=tgt_lang)
     tokenized_batch = [tokenizer.convert_ids_to_tokens(tokenizer.encode(text)) for text in batch]
-    if 'nllb' in model_name:
+    if 'nllb' or 'indic' in model_name:
         tgt_prefix_list = [[tgt_lang]] * len(tokenized_batch)
         results = translator.translate_batch(tokenized_batch, target_prefix=tgt_prefix_list, beam_size=8, num_hypotheses=8, batch_type="tokens", max_batch_size=batch_size)
     else:
@@ -47,18 +51,24 @@ def translate_batch(batch, translator, tokenizer, tgt_lang, model_name, batch_si
     hypotheses = []
     for result in results:
         for hyp in result.hypotheses:
-            detok_hyp = tokenizer.decode(tokenizer.convert_tokens_to_ids(hyp), skip_special_tokens=True)
+            if "indictrans" in model_name:
+                with tokenizer.as_target_tokenizer():
+                    detok_hyp = tokenizer.decode(tokenizer.convert_tokens_to_ids(hyp), skip_special_tokens=True)
+            else:
+                detok_hyp = tokenizer.decode(tokenizer.convert_tokens_to_ids(hyp), skip_special_tokens=True)
+            if "indictrans" in model_name and tgt_lang != "eng_Latn":
+                detok_hyp = ip.postprocess_batch(detok_hyp, lang=tgt_lang)
             hypotheses.append(detok_hyp)
     return hypotheses
 
 # Worker function to process batches from the task queue
-def translate_worker(translator, task_queue, output_lock, output_file, tokenizer, tgt_lang, model_name, logfile, batch_size=64, progress_bar=None):
+def translate_worker(translator, task_queue, output_lock, output_file, tokenizer, src_lang, tgt_lang, model_name, logfile, batch_size=64, progress_bar=None):
     while not task_queue.empty():
         try:
             batch = task_queue.get()  # Get the batch (index, sentence) tuples
             indices, sentences = zip(*batch)  # Separate the indices and the sentences
 
-            translated_batches = translate_batch(sentences, translator, tokenizer, tgt_lang, model_name, batch_size=batch_size)
+            translated_batches = translate_batch(sentences, translator, tokenizer, src_lang, tgt_lang, model_name, batch_size=batch_size)
             translated_batches = split_list_into_sublists(translated_batches)
             
             # Write the results to the target file
@@ -74,7 +84,7 @@ def translate_worker(translator, task_queue, output_lock, output_file, tokenizer
             break
 
 # Main translation function with GPU or CPU distribution and tracking
-def translate_file(source_file, target_file, translators, num_devices, tokenizer, logfile, tgt_lang, model_name, batch_size=64):
+def translate_file(source_file, target_file, translators, num_devices, tokenizer, logfile, src_lang, tgt_lang, model_name, batch_size=64):
     start_time = time.time()
 
     # Read source file and create task queue
@@ -98,7 +108,7 @@ def translate_file(source_file, target_file, translators, num_devices, tokenizer
         # Using ThreadPoolExecutor to manage parallel processing
         with ThreadPoolExecutor(max_workers=num_devices) as executor:
             for device_index in range(num_devices):
-                executor.submit(translate_worker, translators[device_index], task_queue, output_lock, target_file, tokenizer, tgt_lang, model_name, logfile, batch_size, progress_bar)
+                executor.submit(translate_worker, translators[device_index], task_queue, output_lock, target_file, tokenizer, src_lang, tgt_lang, model_name, logfile, batch_size, progress_bar)
 
     end_time = time.time()
     print(f"Translation completed in {end_time - start_time:.2f} seconds.", file=logfile, flush=True)
@@ -138,13 +148,13 @@ def main():
         print(f"Loading tokenizer with language tags: {src_lang} and {tgt_lang}", file=logfile, flush=True)
         tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, src_lang=src_lang, tgt_lang=tgt_lang, use_fast=True)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, truncation=True, padding="longest", trust_remote_code=True, use_fast=True)
     print(f"Tokenizer loaded!", file=logfile, flush=True)
 
     
     print("Loading model...", file=logfile, flush=True)
     # Initialize a translator instance for each device (either GPU or CPU)
-    translators = [ctranslate2.Translator(model_path, device=device_type, device_index=i if device_type == "cuda" else 0, compute_type="float16") for i in range(num_devices)]
+    translators = [ctranslate2.Translator(model_path, device=device_type, device_index=i if device_type == "cuda" else 0) for i in range(num_devices)]
 
     print("Model loaded!", file=logfile, flush=True)
 
@@ -155,7 +165,7 @@ def main():
 
     source_file = args.filein
     target_file = args.fileout
-    translate_file(source_file, target_file, translators, num_devices, tokenizer, logfile, tgt_lang, model_name, batch_size=batch_size)
+    translate_file(source_file, target_file, translators, num_devices, tokenizer, logfile, src_lang, tgt_lang, model_name, batch_size=batch_size)
 
     print(f"Translation completed. Results are saved in '{target_file}'", file=logfile, flush=True)
 
