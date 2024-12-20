@@ -3,7 +3,7 @@ name: Deploy Docs & Publish to PyPi
 on:
   push:
     branches:
-      - main # Update with your main branch or tag filters
+      - indictrans # Update with your main branch or tag filters
 
 jobs:
   deploy-docs:
