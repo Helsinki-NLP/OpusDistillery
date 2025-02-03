@@ -38,3 +38,5 @@ else
     ln -s $file.$lang.gz $outfile.$suffix.langtagged.gz
     echo "The model doesn't have multiple targets, so there is no need to add a language tag, we create a dummy file"
 fi
+
+echo "Added language tag successfully"

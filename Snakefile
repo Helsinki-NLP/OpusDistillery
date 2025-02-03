@@ -935,17 +935,22 @@ rule add_lang_tag_corpus_src_for_student:
     log: f"{log_dir}/add_langid_corpus_{{langpair}}_student.log" 
     conda: "envs/base.yml"
     threads: workflow.cores
-    input: expand(f"{train_student_dir}/corpus.{{lang}}.gz", langpair=langpairs, lang=['source', 'target'])
-    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz",f"{filtered}/{{langpair}}/corpus.target.gz"
+    input: f"{train_student_dir}/corpus.source.gz", f"{train_student_dir}/corpus.target.gz"
+    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz"
     params: prefix=f"{train_student_dir}/corpus",
             trg_three_letter=lambda wildcards: Language.get(wildcards.langpair.split('-')[1]).to_alpha3(),
             suffix="source",
-            train_dir_langpair=lambda wildcards: f"{train_student_dir}".replace("{langpair}", wildcards.langpair)
+            train_dir_langpair=lambda wildcards: f"{train_student_dir}/{wildcards.langpair}"
     shell: '''
+	    echo "Adding language tag to source language" >> {log} 2>&1
         bash pipeline/clean/add-lang-tag.sh "{params.trg_three_letter}" "{params.prefix}" "{o2m_student}" "{params.suffix}" "" >> {log} 2>&1
+        echo "Checking if target language filtered file exists..." >> {log} 2>&1
         if [ ! -f "{filtered}/{wildcards.langpair}/corpus.target.gz" ]; then
+            echo "It doesn't exist, let's copy it from the training directory" >> {log} 2>&1
             cp "{params.train_dir_langpair}/corpus.target.gz" "{filtered}/{wildcards.langpair}/corpus.target.gz";
         fi
+
+        echo "Done!" >> {log} 2>&1
     '''
 
 rule add_lang_tag_devset_for_student:
