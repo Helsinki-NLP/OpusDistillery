@@ -775,8 +775,17 @@ rule collect_corpus:
     input: lambda wildcards: expand(f"{translated}/{{langpair}}/corpus/file.{{part}}.nbest.{wildcards.model_index}.out", part=find_parts(wildcards, checkpoints.split_corpus), allow_missing=True)
     output: trg_corpus=f'{translated}/{{langpair}}/corpus.{{model_index}}.target.gz'
     params: src_corpus=f'{clean_corpus_prefix}.source.langtagged.gz',
+            src_corpus_untagged=f"{clean_corpus_prefix}.source.gz",
             dir=f'{translated}/{{langpair}}/corpus'
-    shell: 'bash pipeline/translate/collect.sh {params.dir} {output} {params.src_corpus} {wildcards.model_index} >> {log} 2>&1'
+    shell: '''
+        if [ ! -f "{params.src_corpus}" ]; then
+            echo "The teacher is not an opus-mt model, thus the source language-tagged corpus does not exist. Creating symbolic link." >> {log} 2>&1
+            ln -s "{params.src_corpus_untagged}" "{params.src_corpus}"
+        else
+            echo "Language-tagged source corpus already exists. Nothing to be done." >> {log} 2>&1
+        fi
+        bash pipeline/translate/collect.sh {params.dir} {output} {params.src_corpus} {wildcards.model_index} >> {log} 2>&1
+    '''
 
 # mono
 
