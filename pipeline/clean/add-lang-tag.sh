@@ -39,4 +39,11 @@ else
     echo "The model doesn't have multiple targets, so there is no need to add a language tag, we create a dummy file"
 fi
 
+if [ $model_dir == "target" ]; then # We also need to return a target file
+    echo "Checking if target language filtered file exists..."
+    if [ ! -f "{filtered}/{wildcards.langpair}/corpus.target.gz" ]; then
+        echo "It doesn't exist, let's copy it from the training directory" >> {log} 2>&1
+        ln -s $file.target.gz $outfile.target.gz;
+    fi
+fi
 echo "Added language tag successfully"
