@@ -925,6 +925,9 @@ rule score:
     shell: '''bash pipeline/cefilter/score.sh \
                 "{input.model}" "{input.vocab}" "{input.src_corpus}" "{input.trg_corpus}" "{output}" >> {log} 2>&1'''
 
+if opusmt_backward:
+    ruleorder: add_lang_tag_corpus_src_for_student > ce_filter
+
 rule ce_filter:
     message: "Cross entropy filtering"
     log: f"{log_dir}/ce_filter_{{langpair}}.log"
