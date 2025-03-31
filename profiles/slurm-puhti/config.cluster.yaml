@@ -4,4 +4,4 @@ multi-gpu-partition: gpu
 cpu-partition: small
 cpu-account: project_2006944
 gpu-account: project_2006944
-time-limit: "02:00:00"
+time-limit: "24:00:00"

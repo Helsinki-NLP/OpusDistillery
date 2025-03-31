@@ -3,6 +3,7 @@ wildcard_constraints:
     trg="\w{2,3}",
     train_vocab="train_joint_spm_vocab[^/]+",
     learn_rate="\d+",
+    epochs="\d+",
     nocrawled="(|_nocrawled)",
     min_score="\d\.\d"
 
@@ -132,8 +133,9 @@ rule evaluate_ct2:
 #TODO: combine model evaluation rules by storing vocabs in model dir with normally trained models as well
 rule evaluate_opus_model:
     message: "Evaluating an OPUS model"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{model_name}/eval/evaluate_{modeltype}{dataset}.log"
-    conda: "envs/base.yml"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/evaluate_{modeltype}{dataset}.log"
+    conda: None
+    container: None
     threads: 7
     resources: gpu=1
     priority: 50
@@ -143,14 +145,14 @@ rule evaluate_opus_model:
         ancient(config["marian-decoder"]),
         eval_source='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}.{src}.gz',
         eval_target='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}.{trg}.gz',
-        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learn_rate}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
+        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learn_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     output:
-        report('{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{model_name}/eval/{modeltype}{dataset}.metrics',
+        report('{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}.metrics',
             category='evaluation', subcategory='{model}', caption='reports/evaluation.rst')
     params:
         dataset_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}',
-        res_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{model_name}/eval/{modeltype}{dataset}',
+        res_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}',
         decoder_config=
-            lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/decoder.yml' if wildcards.modeltype=="basemodel-" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learn_rate}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml',
+            lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/decoder.yml' if wildcards.modeltype=="basemodel-" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learn_rate}_{wildcards.epochs}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml',
     	decoder=config["marian-decoder"]
     shell: '''bash pipeline/eval/eval-gpu.sh "{params.res_prefix}" "{params.dataset_prefix}" {wildcards.src} {wildcards.trg} {params.decoder} "{params.decoder_config}" >> {log} 2>&1'''

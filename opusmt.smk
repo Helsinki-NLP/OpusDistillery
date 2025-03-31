@@ -10,7 +10,8 @@ localrules: download_opus_model, ct2_conversion
 rule download_opus_model:
     message: "Downloading OPUS-MT teacher model"
     log: "{datadir}/models/{src}-{trg}/{model_name}/download_model_{model_name}.log"
-    conda: "envs/base.yml"
+    conda: None
+    container: None
     threads: 1
     output: 
         model=f'{{datadir}}/models/{{src}}-{{trg}}/{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz',
@@ -24,14 +25,15 @@ rule download_opus_model:
 
 rule finetune_opusmt:
     message: "Finetune OPUS-MT model on corpus"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learning_rate}_{model_name}/finetune.log"
-    conda: "envs/base.yml"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learning_rate}_{epochs}_{model_name}/finetune.log"
+    conda: None
+    container: None
     wildcard_constraints:
         learning_rate="\d+"
     threads: gpus_num*3
     resources: gpu=gpus_num
     input:
-        model=f'{{datadir}}/models/{{src}}-{{trg}}/{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz',
+        model=lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz' if wildcards.epochs == "1" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learning_rate}_{int(wildcards.epochs)-1}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz',
         dev_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{src}.gz",
         dev_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{trg}.gz",
         train_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.{src}.gz",
@@ -39,13 +41,13 @@ rule finetune_opusmt:
         marian=ancient(config["marian"]),
         #vocab="{project_name}/{src}-{trg}/{preprocessing}/{train_vocab}/vocab.spm"
     output: 
-        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learning_rate}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
+        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learning_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     params: 
         prefix_train="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train",
         prefix_dev="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev",
         args=config["finetune-args"],
         best_metric=config["best-model-metric"]
-    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" {params.args} >> {log} 2>&1'''
+    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" {params.args} >> {log} 2>&1'''
 
 
 rule ct2_conversion:

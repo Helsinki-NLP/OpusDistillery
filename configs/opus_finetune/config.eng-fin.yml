@@ -12,7 +12,8 @@ experiment:
   vocab: ""
 
   finetune:
-    learning-rates: ["00001","00003","000001"]
+    learning-rates: ["0000001","00001","00003","000001"]
+    epochs: 3
 
   wmt23_termtask:
     annotation-schemes:
@@ -37,14 +38,18 @@ experiment:
 
 marian-args:
 # these configs override pipeline/train/configs
-  finetune:
-    after: 1e
+  finetune: {}
 
 
 datasets:
   # parallel training corpus
   train:
     - custom_mix-uh-tilde400K
+    - custom_finetune
+    - custom_cleanfinetune
+    - custom_mix-uh-tc_nocrawl_1M
+    - custom_mix-uh-tc_nocrawl_5M
+
   tc_scored: ../data/finetuning_data/en-fi/tc_Tatoeba-Challenge-v2023-09-26.scored.gz
   # datasets to merge for validation while training
   devtest:

@@ -22,7 +22,8 @@ base_model_dir=$(dirname ${base_model})
 best_model_metric=$7
 threads=$8
 learn_rate=$9
-extra_params=( "${@:10}" )
+epochs=${10}
+extra_params=( "${@:11}" )
 vocab="${model_dir}/vocab.yml"
 
 #test -v GPUS
@@ -37,6 +38,12 @@ cp ${base_model_dir}/target.spm ${model_dir}
 cp ${base_model_dir}/vocab.yml ${model_dir}
 cp ${base_model} ${model_dir}/model_unfinished.npz
 
+optimizer_file=${base_model_dir}/model_unfinished.npz.optimizer.npz
+if [ -e "${optimizer_file}" ]; then
+  cp ${optimizer_file} ${model_dir}
+  cp ${base_model_dir}/model_unfinished.npz.progress.yml ${model_dir}
+fi
+
 corpus_src="${train_set_prefix}.${src}.gz"
 corpus_trg="${train_set_prefix}.${trg}.gz"
 
@@ -46,16 +53,17 @@ echo "### Subword segmentation with SentencePiece"
 source_spm_path="${model_dir}/source.spm"
 target_spm_path="${model_dir}/target.spm"
 
-pigz -dc "${corpus_src}" | parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
-pigz -dc "${corpus_trg}" | parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/train.sp.${trg}.gz"
+
+pigz -dc "${corpus_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
+pigz -dc "${corpus_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/train.sp.${trg}.gz"
 
 valid_src="${valid_set_prefix}.${src}.gz"
 valid_trg="${valid_set_prefix}.${trg}.gz"
 
 spm_valid_set_prefix="${model_dir}/valid.sp"
 
-pigz -dc "${valid_src}" | parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/valid.sp.${src}.gz"
-pigz -dc "${valid_trg}" | parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/valid.sp.${trg}.gz"
+pigz -dc "${valid_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/valid.sp.${src}.gz"
+pigz -dc "${valid_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/valid.sp.${trg}.gz"
 
 
 # Modify vocab to contain three augmentation symbols
@@ -92,6 +100,7 @@ echo "### Training ${model_dir}"
   --valid-translation-output "${model_dir}/devset.out" \
   --quiet-translation \
   --overwrite \
+  --after "${epochs}e" \
   --no-restore-corpus \
   --valid-reset-stalled \
   --log "${model_dir}/train.log" \
@@ -100,8 +109,9 @@ echo "### Training ${model_dir}"
   "${extra_params[@]}"
 
 
-cp "${model_dir}/model_unfinished.npz" "${output_model}"  
-cp "${model_dir}/model_unfinished.npz.decoder.yml" "${output_model}.decoder.yml"  
+ln -f "${model_dir}/model_unfinished.npz" "${output_model}"  
+ln -f "${model_dir}/model_unfinished.npz.decoder.yml" "${output_model}.decoder.yml"  
+ln -f "${model_dir}/model_unfinished.npz.optimizer.npz" "${output_model}.optimizer.npz"  
 
 echo "### Model training is completed: ${model_dir}"
 echo "###### Done: Training a model"
