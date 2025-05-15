@@ -58,6 +58,19 @@ module vocab:
 
 use rule * from vocab
 
+terms_config = {
+    "spm-encoder": f"{marian_dir}/spm_encode",
+    "fast-align": f"{bin}/fast_align",
+    "atools": f"{bin}/atools"
+    }
+
+module terms:
+    snakefile: "./terms.smk"
+    config: terms_config
+
+use rule * from terms
+
+
 train_config = {
     "marian": f"{marian_dir}/marian",
     "gpus-num": gpus_num,
@@ -270,10 +283,10 @@ shell.prefix(f"{envs} ")
 
 model = (config["experiment"]["opusmt-teacher"].split("/")[-1]).replace(".zip","")
 
-results = expand(f"{data_root_dir}/{experiment}/{src}-{trg}/corpus_{{corpus}}/finetune_{{learning_rate}}_{{epochs}}_{model}/eval/eval-{{dataset}}.metrics", corpus=config["datasets"]["train"], learning_rate=config["experiment"]["finetune"]["learning-rates"],epochs=range(1,config["experiment"]["finetune"]["epochs"]+1), dataset=eval_datasets)
+# results = expand(f"{data_root_dir}/{experiment}/{src}-{trg}/corpus_{{corpus}}/finetune_{{learning_rate}}_{{epochs}}_{model}/eval/eval-{{dataset}}.metrics", corpus=config["datasets"]["train"], learning_rate=config["experiment"]["finetune"]["learning-rates"],epochs=range(1,config["experiment"]["finetune"]["epochs"]+1), dataset=eval_datasets)
 
 # For base model, only generate the metrics once
-results.extend(expand(f"{data_root_dir}/{experiment}/{src}-{trg}/corpus_{{corpus}}/finetune_{{learning_rate}}_{{epochs}}_{model}/eval/basemodel-eval-{{dataset}}.metrics", corpus=config["datasets"]["train"], learning_rate=config["experiment"]["finetune"]["learning-rates"][0], epochs=1, dataset=eval_datasets))
+# results.extend(expand(f"{data_root_dir}/{experiment}/{src}-{trg}/corpus_{{corpus}}/finetune_{{learning_rate}}_{{epochs}}_{model}/eval/basemodel-eval-{{dataset}}.metrics", corpus=config["datasets"]["train"], learning_rate=config["experiment"]["finetune"]["learning-rates"][0], epochs=1, dataset=eval_datasets))
 
 #print(results)
 
@@ -289,14 +302,13 @@ localrules: experiment
 rule experiment:
     message: "Saving experiment metadata"
     output: f'{experiment_dir}/config.yml'
-    priority: 100
+    priority: 100   
     run:
         os.makedirs(experiment_dir, exist_ok=True)
         with open(f'{experiment_dir}/config.yml', 'w') as f:
             yaml.dump(config, f)
 
 # todo: fix jobs grouping in cluster mode
-
 
 # setup
 
@@ -405,50 +417,7 @@ if augment_corpus:
 
 
 
-if wmt23_termtask and finetune_teacher_with_terms: 
-    rule finetune_opusmt_with_terms:
-        message: "Finetune OPUS-MT model on term annotated corpus"
-        log: f"{log_dir}/finetune_teacher-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}{{omit}}.log"
-        wildcard_constraints:
-            omit="(.{0}|-omit)"
-        conda: "envs/base.yml"
-        threads: gpus_num * 2
-        resources: gpu=gpus_num
-        input:
-            rules.merge_devset.output, ancient(trainer),
-            model=f'{teacher_base_dir}0-0/{best_model}',
-            train_src=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus{{omit}}.{src}.gz",
-            train_trg=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus{{omit}}.{trg}.gz",
-            alignments=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus{{omit}}.aln.gz"
-        output: model=f'{teacher_base_dir}-finetuned-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}{{omit}}/model.npz'
-        params: 
-            prefix_train=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus{{omit}}",
-            prefix_test=f"{original}/devset",
-            args=get_args("finetune-teacher-with-terms"),
-            teacher_term_dir=f"{teacher_base_dir}-finetuned-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}{{omit}}"
-        shell: '''bash pipeline/opusmt/term-finetune.sh \
-                    {src} {trg} "{params.prefix_train}" "{params.prefix_test}" \
-                    "{params.teacher_term_dir}" "{input.model}" "{best_model_metric}" {params.args} >> {log} 2>&1'''
-        #shell: '''bash pipeline/train/train-student.sh \
-        #            "{input.alignments}" teacher train {src} {trg} "{params.prefix_train}" "{params.prefix_test}" \
-        #            "{params.teacher_term_dir}" "{input.vocab}" "{best_model_metric}" --pretrained-model "{input.model}" "{params.args}" >> {log} 2>&1'''
 
-
-    rule opusmt_finetune_alignments:
-        message: 'Training word alignment and generating sp corpora for OPUS-MT finetuning'
-        log: f"{log_dir}/alignments.log"
-        conda: "envs/base.yml"
-        threads: workflow.cores
-        input:
-            ancient(spm_encoder), ancient(spm_exporter),
-            src_corpus=clean_corpus_src,trg_corpus=clean_corpus_trg,
-            src_vocab=f'{teacher_base_dir}0-0/source.spm',
-            trg_vocab=f'{teacher_base_dir}0-0/target.spm',	
-            fast_align=ancient(rules.fast_align.output.fast_align), atools=ancient(rules.fast_align.output.atools),
-        output: alignment=f'{teacher_align_dir}/corpus.aln.gz',train_src=f'{teacher_align_dir}/corpus.spm.{src}.gz',train_trg=f'{teacher_align_dir}/corpus.spm.{trg}.gz'
-        params: input_prefix=clean_corpus_prefix
-        shell: '''bash pipeline/opusmt/generate-alignment-and-sp.sh \
-                    "{params.input_prefix}" "{input.src_vocab}" "{input.trg_vocab}" "{teacher_align_dir}" {threads} >> {log} 2>&1'''
 
 
     #rule teacher_alignments:
@@ -466,81 +435,6 @@ if wmt23_termtask and finetune_teacher_with_terms:
     #    params: input_prefix=teacher_corpus
     #    shell: '''bash pipeline/alignment/generate-alignment-and-shortlist.sh \
     #                "{params.input_prefix}" "{input.vocab}" "{teacher_align_dir}" {threads} >> {log} 2>&1'''
-
-    #TODO: These are copy pasted from the similar rules for student training, because of deadline.
-    #Make generic rules for annotation when time for that
-    checkpoint split_teacher_corpus_for_annotation:
-        message: "Splitting the teacher corpus for term annotation"
-        log: f"{log_dir}/split_teacher_corpus_for_annotation.log"
-        conda: "envs/base.yml"
-        threads: 1
-        input:
-            train_src=f'{teacher_corpus}.{src}.gz',train_trg=f'{teacher_corpus}.{trg}.gz',
-            alignments=rules.opusmt_finetune_alignments.output.alignment
-        output: directory(f"{term_data_dir}/teacher_corpus")
-        shell: '''bash pipeline/wmt23_termtask/split-corpus.sh \
-                    {input.train_src} {input.train_trg} {input.alignments} {output} {split_length} >> {log} 2>&1'''
-
-
-    rule annotate_teacher_terms: 
-        message: "Annotating corpus with term information"
-        log: f"{log_dir}/annotate_teacher_terms/{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}.{{part}}.log"
-        conda: "envs/base.yml"
-        threads: 7
-        resources: gpu=1
-        #group 'student'
-        input:
-            train_src=f"{term_data_dir}/teacher_corpus/file.src.{{part}}.gz",
-            train_trg=f"{term_data_dir}/teacher_corpus/file.trg.{{part}}.gz",
-            alignments=f"{term_data_dir}/teacher_corpus/file.aln.{{part}}.gz",
-            src_vocab=f'{teacher_base_dir}0-0/source.spm',
-            trg_vocab=f'{teacher_base_dir}0-0/target.spm',	
-        output:
-            annotated_src=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.src.{{part}}.gz",
-            annotated_trg=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.trg.{{part}}.gz",
-            annotated_alignments=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.aln.{{part}}.gz"
-        shell: '''python 3rd_party/soft-term-constraints/src/softconstraint.py \
-                    --source_spm "{input.src_vocab}" --target_spm "{input.trg_vocab}" --annotation_method {wildcards.scheme} \
-                    --term_start_tag augmentsymbol0 --term_end_tag augmentsymbol1 --trans_end_tag augmentsymbol2 \
-                    --mask_tag augmentsymbol3 --source_lang "{src}" --target_lang "{trg}" \
-                    --source_corpus "{input.train_src}" --target_corpus "{input.train_trg}" \
-                    --alignment_file "{input.alignments}" --terms_per_sent_ratio {wildcards.term_ratio} \
-                    --sents_per_term_sent {wildcards.sents_per_term_sent}  \
-                    --source_output_path "{output.annotated_src}" --target_output_path "{output.annotated_trg}" \
-                    --sp_input --sp_output \
-                    --alignment_output_path "{output.annotated_alignments}" >> {log} 2>&1'''
-
-
-    rule collect_teacher_term_annotations:
-        message: "Collecting term-annotated data"
-        log: f"{log_dir}/annotate_teacher_terms/{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}.collect.log"
-        wildcard_constraints:
-            omit="(.{0}|-omit)"
-        conda: "envs/base.yml"
-        threads: 4
-        input:
-            src=lambda wildcards: expand(f"{term_data_dir}/teacher-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.src.{{part}}.gz",
-                part=find_annotation_parts(wildcards, checkpoints.split_teacher_corpus_for_annotation)),
-            trg=lambda wildcards: expand(f"{term_data_dir}/teacher-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.trg.{{part}}.gz",
-                part=find_annotation_parts(wildcards, checkpoints.split_teacher_corpus_for_annotation)),
-            alignment=lambda wildcards: expand(f"{term_data_dir}/teacher-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.aln.{{part}}.gz",
-                part=find_annotation_parts(wildcards, checkpoints.split_teacher_corpus_for_annotation))
-        output:
-            annotated_src=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{src}.gz",
-            annotated_trg=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{trg}.gz",
-            annotated_alignments=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.aln.gz",
-            annotated_omit_src=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus-omit.{src}.gz",
-            annotated_omit_trg=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus-omit.{trg}.gz",
-            annotated_omit_alignments=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus-omit.aln.gz"
-        params:
-            src_prefix=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.src",
-            trg_prefix=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.trg",
-            aln_prefix=f"{term_data_dir}/teacher-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.aln"
-
-        shell: '''bash pipeline/wmt23_termtask/collect.sh "{params.src_prefix}" "{params.trg_prefix}" "{params.aln_prefix}" \
-                "{output.annotated_src}" "{output.annotated_trg}" "{output.annotated_alignments}" \
-                "{output.annotated_omit_src}" "{output.annotated_omit_trg}" "{output.annotated_omit_alignments}" >> {log} 2>&1'''
-
 
 if augment_corpus:
     rule finetune_teacher:
@@ -852,91 +746,6 @@ rule train_student:
     shell: '''bash pipeline/train/train-student.sh \
                 "{input.alignments}" student train {src} {trg} "{params.prefix_train}" "{params.prefix_test}" \
                 "{student_dir}" "{input.vocab}" "{best_model_metric}" {params.args} >> {log} 2>&1'''
-
-
-checkpoint split_corpus_for_annotation:
-    message: "Splitting the corpus for term annotation"
-    log: f"{log_dir}/split_corpus_for_annotation.log"
-    conda: "envs/base.yml"
-    threads: 1
-    input:
-        train_src=rules.ce_filter.output.src_corpus,
-        train_trg=rules.ce_filter.output.trg_corpus,
-        alignments=rules.alignments.output.alignment
-    output: directory(f"{term_data_dir}/corpus")
-    shell: '''bash pipeline/wmt23_termtask/split-corpus.sh \
-                {input.train_src} {input.train_trg} {input.alignments} {output} {split_length} >> {log} 2>&1'''
-
-rule annotate_terms: 
-    message: "Annotating corpus with term information"
-    log: f"{log_dir}/annotate_terms/{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}.{{part}}.log"
-    conda: "envs/base.yml"
-    threads: 7
-    resources: gpu=1,mem_mb=128000
-    #group 'student'
-    input:
-        train_src=f"{term_data_dir}/corpus/file.src.{{part}}.gz",
-        train_trg=f"{term_data_dir}/corpus/file.trg.{{part}}.gz",
-        alignments=f"{term_data_dir}/corpus/file.aln.{{part}}.gz",
-        vocab=vocab_path
-    output:
-        annotated_src=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.src.{{part}}.gz",
-        annotated_trg=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.trg.{{part}}.gz",
-        annotated_alignments=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.aln.{{part}}.gz"
-    shell: '''python 3rd_party/soft-term-constraints/src/softconstraint.py \
-                --source_spm "{input.vocab}" --target_spm "{input.vocab}" --annotation_method {wildcards.scheme} \
-                --term_start_tag augmentsymbol0 --term_end_tag augmentsymbol1 --trans_end_tag augmentsymbol2 \
-                --mask_tag augmentsymbol3 --source_lang "{src}" --target_lang "{trg}" \
-                --source_corpus "{input.train_src}" --target_corpus "{input.train_trg}" \
-                --alignment_file "{input.alignments}" --terms_per_sent_ratio {wildcards.term_ratio} \
-                --sents_per_term_sent {wildcards.sents_per_term_sent}  \
-                --source_output_path "{output.annotated_src}" --target_output_path "{output.annotated_trg}" \
-                --alignment_output_path "{output.annotated_alignments}" >> {log} 2>&1'''
-
-
-rule collect_term_annotations:
-    message: "Collecting term-annotated data"
-    log: f"{log_dir}/annotate_terms/{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}.collect.log"
-    conda: "envs/base.yml"
-    threads: 4
-    input:
-        src=lambda wildcards: expand(f"{term_data_dir}/student-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.src.{{part}}.gz",
-            part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
-        trg=lambda wildcards: expand(f"{term_data_dir}/student-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.trg.{{part}}.gz",
-            part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
-        alignment=lambda wildcards: expand(f"{term_data_dir}/student-term-{wildcards.scheme}-{wildcards.term_ratio}-{wildcards.sents_per_term_sent}/annotated.aln.{{part}}.gz",
-            part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation))
-    output:
-        annotated_src=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{src}.gz",
-        annotated_trg=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{trg}.gz",
-        annotated_alignments=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.aln.gz"
-    params:
-        src_prefix=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.src",
-        trg_prefix=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.trg",
-        aln_prefix=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/annotated.aln"
-
-    shell: '''bash pipeline/wmt23_termtask/collect.sh "{params.src_prefix}" "{params.trg_prefix}" "{params.aln_prefix}" \
-            "{output.annotated_src}" "{output.annotated_trg}" "{output.annotated_alignments}" >> {log} 2>&1'''
-
-rule train_term_student:
-    message: "Training student with term constraints"
-    log: f"{log_dir}/train_student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}.log"
-    conda: "envs/base.yml"
-    threads: gpus_num*3
-    resources: gpu=gpus_num
-    #group 'student'
-    input:
-        rules.merge_devset.output, ancient(trainer),
-        train_src=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{src}.gz",
-        train_trg=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.{trg}.gz",
-        alignments=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus.aln.gz",
-        vocab=vocab_path
-    output: model=f'{student_dir}-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/{best_model}'
-    params: prefix_train=f"{term_data_dir}/student-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/corpus",prefix_test=f"{original}/devset",
-            args=get_args("training-student"),student_term_dir=f"{student_dir}-term-{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}"
-    shell: '''bash pipeline/train/train-student.sh \
-                "{input.alignments}" student train {src} {trg} "{params.prefix_train}" "{params.prefix_test}" \
-                "{params.student_term_dir}" "{input.vocab}" "{best_model_metric}" {params.args} >> {log} 2>&1'''
 
 # quantize
 
