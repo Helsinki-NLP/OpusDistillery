@@ -9,14 +9,15 @@ set -euo pipefail
 echo "###### Generating alignments and shortlist"
 test -v MARIAN
 test -v BIN
-test -v SRC
-test -v TRG
 
-corpus_prefix=$1
-source_spm_path=$2
-target_spm_path=$3
-output_dir=$4
-threads=$5
+corpus_src=$1
+corpus_trg=$2
+source_spm_path=$3
+target_spm_path=$4
+output_dir=$5
+threads=$6
+src=$7
+trg=$8
 
 cd "$(dirname "${0}")"
 
@@ -28,23 +29,19 @@ rm -rf "${dir}"
 
 mkdir -p "${dir}"
 
-corpus_src="${corpus_prefix}.${SRC}.gz"
-corpus_trg="${corpus_prefix}.${TRG}.gz"
-
-
 echo "### Subword segmentation with SentencePiece"
-test -s "${dir}/corpus.spm.${SRC}.gz" ||
+test -s "${dir}/corpus.spm.${src}.gz" ||
   pigz -dc "${corpus_src}" |
   parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${source_spm_path}" |
-  pigz >"${output_dir}/corpus.spm.${SRC}.gz"
-test -s "${output_dir}/corpus.spm.${TRG}.gz" ||
+  pigz >"${output_dir}/corpus.spm.${src}.gz"
+test -s "${output_dir}/corpus.spm.${trg}.gz" ||
   pigz -dc "${corpus_trg}" |
   parallel --no-notice --pipe -k -j "${threads}" --block 50M "${MARIAN}/spm_encode" --model "${target_spm_path}" |
-  pigz >"${output_dir}/corpus.spm.${TRG}.gz"
+  pigz >"${output_dir}/corpus.spm.${trg}.gz"
 
 echo "### Creating merged corpus"
 test -s "${output_dir}/corpus.aln.gz" || test -s "${dir}/corpus" ||
-  paste <(pigz -dc "${output_dir}/corpus.spm.${SRC}.gz") <(pigz -dc "${output_dir}/corpus.spm.${TRG}.gz") |
+  paste <(pigz -dc "${output_dir}/corpus.spm.${src}.gz") <(pigz -dc "${output_dir}/corpus.spm.${trg}.gz") |
   sed 's/\t/ ||| /' >"${dir}/corpus"
 
 echo "### Training alignments"

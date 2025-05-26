@@ -6,7 +6,7 @@
 set -x
 set -euo pipefail
 
-echo "###### Finetune am model"
+echo "###### Finetune an OPUS-MT model"
 
 # On LUMI, having CUDA_VISIBLE_DEVICES set causes a segfault when using multiple GPUs
 unset CUDA_VISIBLE_DEVICES
@@ -23,7 +23,8 @@ best_model_metric=$7
 threads=$8
 learn_rate=$9
 epochs=${10}
-extra_params=( "${@:11}" )
+segmented_input=${11}
+extra_params=( "${@:12}" )
 vocab="${model_dir}/vocab.yml"
 
 #test -v GPUS
@@ -47,31 +48,35 @@ fi
 corpus_src="${train_set_prefix}.${src}.gz"
 corpus_trg="${train_set_prefix}.${trg}.gz"
 
-spm_train_set_prefix="${model_dir}/train.sp"
+
 
 echo "### Subword segmentation with SentencePiece"
 source_spm_path="${model_dir}/source.spm"
 target_spm_path="${model_dir}/target.spm"
 
+# Modify vocab to contain augmentation symbols
+python ./add_term_symbols.py \
+  --source_spm_model ${source_spm_path} \
+  --target_spm_model ${target_spm_path} \
+  --yaml_vocab ${vocab} \
+  --num_special_symbols 10
 
-pigz -dc "${corpus_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
-pigz -dc "${corpus_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/train.sp.${trg}.gz"
 
+if [[ ${segmented_input} == "true" ]]; then
+    spm_train_set_prefix="${train_set_prefix}"
+else
+    spm_train_set_prefix="${model_dir}/train.sp"
+    pigz -dc "${corpus_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
+    pigz -dc "${corpus_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/train.sp.${trg}.gz"
+
+fi
+
+# always segment valid set, it's small, and even if it segmented, re-segmenting does not change it
+spm_valid_set_prefix="${model_dir}/valid.sp"
 valid_src="${valid_set_prefix}.${src}.gz"
 valid_trg="${valid_set_prefix}.${trg}.gz"
-
-spm_valid_set_prefix="${model_dir}/valid.sp"
-
 pigz -dc "${valid_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/valid.sp.${src}.gz"
 pigz -dc "${valid_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/valid.sp.${trg}.gz"
-
-
-# Modify vocab to contain three augmentation symbols
-# TODO: generalize this to work with a list of symbols, for combined RAT and term work
-# python ./add_term_symbols.py \
-#  --source_spm_model ${model_dir}/source.spm \
-#  --target_spm_model ${model_dir}/target.spm \
-#  --yaml_vocab ${vocab}
 
 all_model_metrics=(chrf ce-mean-words bleu-detok)
 
@@ -105,7 +110,7 @@ echo "### Training ${model_dir}"
   --valid-reset-stalled \
   --log "${model_dir}/train.log" \
   --valid-log "${model_dir}/valid.log" \
-  --valid-freq 2000u \
+  --valid-freq 5000u \
   "${extra_params[@]}"
 
 

@@ -2,9 +2,14 @@ import argparse
 import os
 import sentencepiece as spm
 import yaml
+import sentencepiece
+import sentencepiece_model_pb2 as sp_protobuf_model
 
+"""This will add special user-defined symbols to the model vocab by replacing rare symbols.
+The script also modifies the source Sentencepiece model to keep the added symbols unsplit.
+""" 
 
-def find_symbols_with_lowest_scores(source_sp, target_sp, vocab):
+def find_symbols_with_lowest_scores(source_sp, target_sp, vocab,amount_of_ssymbols):
     #three criteria for symbols to replace:
     #1. uncommon in source spm
     #2. do not exist in target spm
@@ -20,14 +25,14 @@ def find_symbols_with_lowest_scores(source_sp, target_sp, vocab):
             continue
         elif source_symbol in vocab:
             special_symbols.append(source_symbol)
-            if len(special_symbols) == 3:
+            if len(special_symbols) == amount_of_ssymbols:
                 break
 
     return special_symbols
 
-def replace_symbols_in_yaml_vocab(vocab, new_yaml_file, symbols_to_replace):
+def replace_symbols_in_yaml_vocab(vocab, new_yaml_file, symbols_to_replace, amount_of_ssymbols):
     new_vocab = vocab.copy()
-    special_symbols = ['augmentsymbol0', 'augmentsymbol1', 'augmentsymbol2']
+    special_symbols = [f"augmentsymbol{x}" for x in range(0,amount_of_ssymbols)]
     for symbol in symbols_to_replace:
         if symbol in new_vocab:
             new_vocab[special_symbols.pop()] = new_vocab.pop(symbol)
@@ -36,11 +41,24 @@ def replace_symbols_in_yaml_vocab(vocab, new_yaml_file, symbols_to_replace):
     with open(new_yaml_file, 'w') as f:
         yaml.dump(new_vocab, f, encoding='utf-8', allow_unicode=True)
 
+# Note that this does replace the symbols as in the vocab file, but only adds them
+# to the vocab. This works as long as the sp models are used output text, using 
+# a separate vocab with Marian. So you can't use this with the sp support of Marian.
+def add_symbols_to_spmodel(spm_model_path, amount_of_ssymbols):
+    special_symbols = [f"augmentsymbol{x}" for x in range(0,amount_of_ssymbols)]
+    m = sp_protobuf_model.ModelProto()
+    m.ParseFromString(open(spm_model_path,"rb").read())
+    m.trainer_spec.user_defined_symbols.extend(special_symbols)
+    m.pieces.extend([m.SentencePiece(type=4,piece=x) for x in special_symbols])
+    with open(spm_model_path, 'wb') as f:
+        f.write(m.SerializeToString())
+
 def main():
     parser = argparse.ArgumentParser(description='Process SentencePiece model and Marian yaml vocabulary')
     parser.add_argument('--source_spm_model', type=str, help='Source SentencePiece model file')
     parser.add_argument('--target_spm_model', type=str, help='Target SentencePiece model file')
     parser.add_argument('--yaml_vocab', type=str, help='Marian yaml vocabulary file')
+    parser.add_argument('--num_special_symbols', type=int, help='Amount of special symbols to add')
     args = parser.parse_args()
 
     # The vocabs are occasionally corrupt, safe_load will break on unquoted <<, so fix that
@@ -58,10 +76,10 @@ def main():
     target_sp = spm.SentencePieceProcessor(args.target_spm_model)
 
    
-    source_symbols_with_lowest_scores = find_symbols_with_lowest_scores(source_sp, target_sp, vocab)
+    source_symbols_with_lowest_scores = find_symbols_with_lowest_scores(source_sp, target_sp, vocab,args.num_special_symbols)
     new_yaml_file = os.path.splitext(args.yaml_vocab)[0] + '_term.yaml'
-    replace_symbols_in_yaml_vocab(vocab, new_yaml_file, source_symbols_with_lowest_scores)
-
+    replace_symbols_in_yaml_vocab(vocab, new_yaml_file, source_symbols_with_lowest_scores,args.num_special_symbols)
+    add_symbols_to_spmodel(args.source_spm_model,args.num_special_symbols)
     os.rename(args.yaml_vocab, f"{args.yaml_vocab}.bak")
     os.rename(new_yaml_file, f"{args.yaml_vocab}")
     

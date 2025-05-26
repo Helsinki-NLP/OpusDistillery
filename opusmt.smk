@@ -2,7 +2,8 @@ wildcard_constraints:
     src="\w{2,3}",
     trg="\w{2,3}",
     train_vocab="train_joint_spm_vocab[^/]+",
-    model_name="[^/]+"
+    model_name="[^/]+",
+    seg="(|_seg)"
 
 gpus_num=config["gpus-num"]
 
@@ -25,12 +26,11 @@ rule download_opus_model:
 
 rule finetune_opusmt:
     message: "Finetune OPUS-MT model on corpus"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learning_rate}_{epochs}_{model_name}/finetune.log"
-    conda: None
-    container: None
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/finetune.log"
+    conda: "envs/base.yml"
     wildcard_constraints:
         learning_rate="\d+"
-    threads: gpus_num*3
+    threads: gpus_num*7
     resources: gpu=gpus_num
     input:
         model=lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz' if wildcards.epochs == "1" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learning_rate}_{int(wildcards.epochs)-1}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz',
@@ -41,13 +41,14 @@ rule finetune_opusmt:
         marian=ancient(config["marian"]),
         #vocab="{project_name}/{src}-{trg}/{preprocessing}/{train_vocab}/vocab.spm"
     output: 
-        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learning_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
+        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune{{seg}}_{{learning_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     params: 
         prefix_train="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train",
         prefix_dev="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev",
         args=config["finetune-args"],
-        best_metric=config["best-model-metric"]
-    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" {params.args} >> {log} 2>&1'''
+        best_metric=config["best-model-metric"],
+        segmented_input=lambda wildcards: "true" if wildcards.seg else "false" 
+    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" "{params.segmented_input}" {params.args} >> {log} 2>&1'''
 
 
 rule ct2_conversion:

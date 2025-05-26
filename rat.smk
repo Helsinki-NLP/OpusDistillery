@@ -69,7 +69,7 @@ rule find_fuzzy_matches:
         source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{src}.gz", 
         target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{trg}.gz",
         index="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/index.{index_type}.{src}-{trg}.fmi",
-        priors="{project_name}/{src}-{trg}/download_tc_v2023-09-26/extract_tc_scored_0.7/subset_5M/en-fi.priors" #TODO: non-hardcode this
+        priors="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{src}-{trg}.priors" #TODO: non-hardcode this
     output:
         matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/{index_type}-{set}.{src}-{trg}.matches.gz"
     params:
@@ -84,7 +84,7 @@ use rule find_fuzzy_matches as find_reverse_fuzzy_matches with:
         source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{trg}.gz", 
         target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{src}.gz",
         index="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/index.targetsim_{index_type}.{trg}-{src}.fmi",
-        priors="{project_name}/{src}-{trg}/download_tc_v2023-09-26/extract_tc_scored_0.7/subset_5M/en-fi.priors" #TODO: non-hardcode this
+        priors="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{src}-{trg}.priors" #TODO: non-hardcode this
     output: 
         matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/targetsim_{index_type}-{set}.{trg}-{src}.matches.gz"
     params:
@@ -97,7 +97,7 @@ use rule find_fuzzy_matches as find_domain_fuzzy_matches with:
         source=ancient("{project_name}/{src}-{trg}/{tc_processing}/domeval.{src}.gz"), 
         target=ancient("{project_name}/{src}-{trg}/{tc_processing}/domeval.{trg}.gz"),
         index="{project_name}/{src}-{trg}/{tc_processing}/domeval_indexes/index.{index_type}.{src}-{trg}.fmi",
-        priors="{project_name}/{src}-{trg}/download_tc_v2023-09-26/extract_tc_scored_0.7/subset_5M/en-fi.priors" #TODO: non-hardcode this
+        priors="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{src}-{trg}.priors" #TODO: non-hardcode this
 
 ruleorder: augment_data_with_domain_fuzzies > augment_data_with_fuzzies
 
