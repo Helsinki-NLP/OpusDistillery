@@ -13,18 +13,17 @@ unset CUDA_VISIBLE_DEVICES
 
 src=$1
 trg=$2
-train_set_prefix=$3
-valid_set_prefix=$4
-output_model=$5
+output_model=$3
 model_dir=$(dirname ${output_model})
-base_model=$6
+base_model=$4
 base_model_dir=$(dirname ${base_model})
-best_model_metric=$7
-threads=$8
-learn_rate=$9
-epochs=${10}
-segmented_input=${11}
-extra_params=( "${@:12}" )
+best_model_metric=$5
+threads=$6
+learn_rate=$7
+epochs=$8
+segmented_input=$9
+vocab=${10}
+extra_params=( "${@:11}" )
 vocab="${model_dir}/vocab.yml"
 
 #test -v GPUS
@@ -34,9 +33,6 @@ vocab="${model_dir}/vocab.yml"
 cd "$(dirname "${0}")"
 mkdir -p "${model_dir}/tmp"
 
-cp ${base_model_dir}/source.spm ${model_dir}
-cp ${base_model_dir}/target.spm ${model_dir}
-cp ${base_model_dir}/vocab.yml ${model_dir}
 cp ${base_model} ${model_dir}/model_unfinished.npz
 
 optimizer_file=${base_model_dir}/model_unfinished.npz.optimizer.npz
@@ -45,40 +41,13 @@ if [ -e "${optimizer_file}" ]; then
   cp ${base_model_dir}/model_unfinished.npz.progress.yml ${model_dir}
 fi
 
-corpus_src="${train_set_prefix}.${src}.gz"
-corpus_trg="${train_set_prefix}.${trg}.gz"
-
-
-
-echo "### Subword segmentation with SentencePiece"
-source_spm_path="${model_dir}/source.spm"
-target_spm_path="${model_dir}/target.spm"
-
-# Modify vocab to contain augmentation symbols
-python ./add_term_symbols.py \
-  --source_spm_model ${source_spm_path} \
-  --target_spm_model ${target_spm_path} \
-  --yaml_vocab ${vocab} \
-  --num_special_symbols 10
-
-
-if [[ ${segmented_input} == "true" ]]; then
-    spm_train_set_prefix="${train_set_prefix}"
-else
-    spm_train_set_prefix="${model_dir}/train.sp"
-    pigz -dc "${corpus_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
-    pigz -dc "${corpus_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/train.sp.${trg}.gz"
-
-fi
-
-# always segment valid set, it's small, and even if it segmented, re-segmenting does not change it
+spm_train_set_prefix="${model_dir}/train.sp"
 spm_valid_set_prefix="${model_dir}/valid.sp"
-valid_src="${valid_set_prefix}.${src}.gz"
-valid_trg="${valid_set_prefix}.${trg}.gz"
-pigz -dc "${valid_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/valid.sp.${src}.gz"
-pigz -dc "${valid_trg}" | "${MARIAN}/spm_encode" --model "${target_spm_path}" | pigz >"${model_dir}/valid.sp.${trg}.gz"
 
 all_model_metrics=(chrf ce-mean-words bleu-detok)
+
+# disable early stopping, valid set does not reflect specialized performance that we are fine-tuning for, training stops after n epochs.
+early_stopping=1000
 
 echo "### Training ${model_dir}"
 
@@ -94,6 +63,7 @@ echo "### Training ${model_dir}"
   -T "${model_dir}/tmp" \
   --shuffle-in-ram \
   --vocabs "${vocab}" "${vocab}" \
+  --mini-batch 256 \
   -w "${WORKSPACE}" \
   --devices ${GPUS} \
   --beam-size 6 \
@@ -106,6 +76,7 @@ echo "### Training ${model_dir}"
   --quiet-translation \
   --overwrite \
   --after "${epochs}e" \
+  --early-stopping "${early_stopping}" \
   --no-restore-corpus \
   --valid-reset-stalled \
   --log "${model_dir}/train.log" \

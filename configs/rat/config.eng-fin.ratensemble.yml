@@ -1,0 +1,58 @@
+#OPUS-CAT unified RAT, eng-fin
+
+experiment:
+  name: unified_rat
+  src: eng
+  trg: fin
+
+  opus_model = ["opusTCv20210807+bt-2021-09-01"]
+
+  fuzzies:
+    min-scores: [0.5]
+    min-fuzzies: [1]
+    max-fuzzies: [1]
+    contrast-factor: [0.7]
+    
+  ngrams:
+    min-ngrams: [1]
+    max-ngrams: [1]
+
+  terms:
+    annotation-schemes:
+      - lemma-nonfac-int-append
+    term-ratios: [2]
+    sents-per-term-sents: [1]
+    finetune-teacher-with-terms: True
+
+  data:
+    tc_version: v2023-09-26
+    parallel-max-sentences: [10M]
+    excluded: ["crawled","crawled+subs"]
+    min_scores: 0.7
+
+  best-model: chrf
+
+marian-args:
+# these configs override pipeline/train/configs
+  finetune-teacher-with-terms:
+    after: 1e
+  training-teacher:
+    after: 120e
+    early-stopping: 40
+    no-restore-corpus: ""
+    valid-reset-stalled: ""
+
+datasets:
+  # parallel training corpus
+  tc_scored: ../data/finetuning_data/en-fi/tc_Tatoeba-Challenge-v2023-09-26.scored.gz
+  # datasets to merge for validation while training
+  devtest:
+    - flores_dev
+  # datasets for evaluation
+  test:
+    - flores_devtest
+    - sacrebleu_wmt15
+    - sacrebleu_wmt16
+    - sacrebleu_wmt17
+    - sacrebleu_wmt18
+    - sacrebleu_wmt19

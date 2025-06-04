@@ -89,9 +89,9 @@ def main(args):
 
             if len(filtered_matches) >= args.min_fuzzies:
                 if args.include_source:
-                    fuzzy_string = "".join([f"{match[1]}{args.source_separator}{match[2]}{args.target_separator}_{get_fuzzy_bucket(match[0])}" for match in filtered_matches])    
+                    fuzzy_string = "".join([f"{match[1]}{args.source_separator}{match[2]}{args.target_separator}{get_fuzzy_bucket(match[0])}" for match in filtered_matches])    
                 else:
-                    fuzzy_string = "".join([f"{match[2]}{args.target_separator}_{get_fuzzy_bucket(match[0])}" for match in filtered_matches])    
+                    fuzzy_string = "".join([f"{match[2]}{args.target_separator}{get_fuzzy_bucket(match[0])}" for match in filtered_matches])    
                 src_output_file.write(f"{fuzzy_string}{src_sentence}\n")
                 trg_output_file.write(trg_sentence+"\n")
                 augmented_count += 1

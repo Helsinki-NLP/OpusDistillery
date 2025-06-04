@@ -27,7 +27,7 @@ rule build_fuzzy_index:
     conda: None
     priority: 100
     container: None
-    resources: mem_mb=lambda wildcards, input, attempt: (input.size//1000000) * attempt * 20
+    resources: mem_mb=lambda wildcards, input, attempt: 4000 + ((input.size//1000000) * attempt * 20)
     envmodules:
         "LUMI/22.12",
         "Boost"
@@ -92,14 +92,14 @@ use rule find_fuzzy_matches as find_reverse_fuzzy_matches with:
         src="{trg}",
         trg="{src}"
 
-use rule find_fuzzy_matches as find_domain_fuzzy_matches with:	
+use rule find_fuzzy_matches as find_domain_fuzzy_matches with:
     input:
         source=ancient("{project_name}/{src}-{trg}/{tc_processing}/domeval.{src}.gz"), 
         target=ancient("{project_name}/{src}-{trg}/{tc_processing}/domeval.{trg}.gz"),
         index="{project_name}/{src}-{trg}/{tc_processing}/domeval_indexes/index.{index_type}.{src}-{trg}.fmi",
         priors="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{src}-{trg}.priors" #TODO: non-hardcode this
 
-ruleorder: augment_data_with_domain_fuzzies > augment_data_with_fuzzies
+ruleorder: augment_data_with_fuzzies > augment_data_with_domain_fuzzies
 
 rule augment_data_with_fuzzies:
     message: "Augmenting data with fuzzies"
@@ -119,11 +119,11 @@ rule augment_data_with_fuzzies:
         augment_source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{src}.gz", 
         augment_target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{trg}.gz",
         matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/{index_type}-{set}.{src}-{trg}.matches.gz"
-    output: 
-        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/{index_type}-{set}.{src}.gz",
-        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/{index_type}-{set}.{trg}.gz",
-        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_{index_type}-{set}.{src}.gz",
-        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_{index_type}-{set}.{trg}.gz"
+    output:
+        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_{index_type}/{set}.{src}.gz",
+        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_{index_type}/{set}.{trg}.gz",
+        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_{index_type}/{set}.{src}.gz",
+        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_{index_type}/{set}.{trg}.gz"
     params:
         fuzzy_max_score=lambda wildcards: "1" if wildcards.fuzzy_max_score == "" else wildcards.fuzzy_max_score.replace("-",""),
         mix_matches="",
@@ -141,10 +141,20 @@ rule augment_data_with_fuzzies:
     --max_score {params.fuzzy_max_score} \
     --min_fuzzies {wildcards.min_fuzzies} \
     --max_fuzzies {wildcards.max_fuzzies} \
+    --source_separator augmentsymbol0 \
+    --target_separator augmentsymbol \
     {params.extra_args} >> {log} 2>&1 && \
-    {{ zcat {output.source} | sed "s/FUZZY_BREAK_[0-9]/FUZZY_BREAK/g" | gzip > {output.source_nobands} ; }} >> {log} 2>&1 &&\
+    {{ zcat {output.source} | sed "s/augmentsymbol[1-9]/augmentsymbol1/g" | gzip > {output.source_nobands} ; }} >> {log} 2>&1 &&\
     ln {output.target} {output.target_nobands} >> {log} 2>&1'''
 
+use rule augment_data_with_fuzzies as augment_data_with_domain_fuzzies with:	
+    wildcard_constraints:
+        set="domeval"
+    input:
+        augment_source=ancient("{project_name}/{src}-{trg}/{tc_processing}/{set}.{src}.gz"), 
+        augment_target=ancient("{project_name}/{src}-{trg}/{tc_processing}/{set}.{trg}.gz"),
+        matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/{index_type}-{set}.{src}-{trg}.matches.gz"
+    
 #TODO: reorganize the concept of augmentation. The training data can be augmented with train, all_filtered, train_targetsim, all_filtered_target_sim
 use rule augment_data_with_fuzzies as augment_data_with_reverse_fuzzies with:
     log: "{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/augment_targetsim_{index_type}-{set}_matches.log"
@@ -153,10 +163,10 @@ use rule augment_data_with_fuzzies as augment_data_with_reverse_fuzzies with:
         augment_target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/{set}.{trg}.gz",
         matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/targetsim_{index_type}-{set}.{trg}-{src}.matches.gz"
     output: 
-        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/targetsim_{index_type}-{set}.{src}.gz",
-        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/targetsim_{index_type}-{set}.{trg}.gz",
-        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_targetsim_{index_type}-{set}.{src}.gz",
-        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_targetsim_{index_type}-{set}.{trg}.gz"
+        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_targetsim_{index_type}/{set}.{src}.gz",
+        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_targetsim_{index_type}/{set}.{trg}.gz",
+        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_targetsim_{index_type}/{set}.{src}.gz",
+        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_targetsim_{index_type}/{set}.{trg}.gz"
 
 use rule augment_data_with_fuzzies as augment_data_with_mixed_fuzzies with:
     log: "{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/augment_mixedsim_{index_type}-{set}_matches.log"
@@ -175,13 +185,6 @@ use rule augment_data_with_fuzzies as augment_data_with_mixed_fuzzies with:
         fuzzy_max_score=lambda wildcards: "1" if wildcards.fuzzy_max_score == "" else wildcards.fuzzy_max_score.replace("-",""),
         mix_matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/targetsim_{index_type}-{set}.{trg}-{src}.matches.gz"
 
-use rule augment_data_with_fuzzies as augment_data_with_domain_fuzzies with:	
-    wildcard_constraints:
-        set="domeval"
-    input:
-        augment_source=ancient("{project_name}/{src}-{trg}/{tc_processing}/{set}.{src}.gz"), 
-        augment_target=ancient("{project_name}/{src}-{trg}/{tc_processing}/{set}.{trg}.gz"),
-        matches=ancient("{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/{index_type}-{set}.{src}-{trg}.matches.gz")
         
 rule combine_targetsim_and_sourcesim:
     log: "{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/augment_combosim{combofactor}_{index_type}-{set}_matches.log"

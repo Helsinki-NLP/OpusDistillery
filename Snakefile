@@ -96,10 +96,16 @@ module opusmt:
 
 use rule * from opusmt
 
+#TODO: construct multisource model paths from the config file information
+multisource_models = [
+        "/scratch/project_2006944/tommi/unified_rat/data/unified_rat/eng-fin/download_tc_v2023-09-26/extract_tc_scored_0.7_nocrawled/subset_10M/build_index/find_matches_0.7/augment_train_0.5_1_1_nobands_train/finetune_00001_1_opusTCv20210807+bt-2021-09-01/convert_to_hf/model.safetensors", "/scratch/project_2006944/tommi/unified_rat/data/unified_rat/eng-fin/download_tc_v2023-09-26/extract_tc_scored_0.7_nocrawled/subset_10M/terms_align_and_sp_opusTCv20210807+bt-2021-09-01/annotate_terms_lemma-nonfac-int-append-2-1/finetune_seg_00001_1_opusTCv20210807+bt-2021-09-01/convert_to_hf/model.safetensors"
+    ]
+
 eval_config = {
     "marian-decoder": f"{marian_dir}/marian-decoder",
     "gpus-num": gpus_num,
-    "best-model-metric": best_model_metric}
+    "best-model-metric": best_model_metric,
+    "multisource_models": multisource_models}
 
 
 module eval:
@@ -113,7 +119,6 @@ translate_config = {
     "gpus-num": gpus_num,
     "best-model-metric": best_model_metric,
     "decoding-teacher-args": get_args("decoding-teacher")}
-
 
 module translate:
     snakefile: "./translate.smk"
@@ -282,6 +287,7 @@ else:
 shell.prefix(f"{envs} ")
 
 model = (config["experiment"]["opusmt-teacher"].split("/")[-1]).replace(".zip","")
+
 
 # results = expand(f"{data_root_dir}/{experiment}/{src}-{trg}/corpus_{{corpus}}/finetune_{{learning_rate}}_{{epochs}}_{model}/eval/eval-{{dataset}}.metrics", corpus=config["datasets"]["train"], learning_rate=config["experiment"]["finetune"]["learning-rates"],epochs=range(1,config["experiment"]["finetune"]["epochs"]+1), dataset=eval_datasets)
 

@@ -1,30 +1,32 @@
 wildcard_constraints:
     src="\w{2,3}",
     trg="\w{2,3}",
-    train_vocab="train_joint_spm_vocab[^/]+",
+    train_vocab="(train_joint_spm_vocab[^/]+/|)",
     learn_rate="\d+",
     epochs="\d+",
     nocrawled="(|_nocrawled)",
-    min_score="\d\.\d"
+    min_score="\d\.\d",
+    seg="(|_seg)"
 
 gpus_num=config["gpus-num"]
 
 def find_domain_sets(wildcards, checkpoint):
     checkpoint_output = checkpoint.get(src=wildcards.src,trg=wildcards.trg,project_name=wildcards.project_name,download_tc_dir=wildcards.download_tc_dir,min_score=wildcards.min_score,nocrawled=wildcards.nocrawled).output["subcorpora"]
+    print(glob_wildcards(os.path.join(checkpoint_output,f"{{domain,.*}}.{wildcards.src}.gz")).domain)
     return glob_wildcards(os.path.join(checkpoint_output,f"{{domain,.*}}.{wildcards.src}.gz")).domain
 
 def find_translate_sets(wildcards, checkpoint):
     checkpoint_output = checkpoint.get(**wildcards).output["output_dir"]
     return glob_wildcards(os.path.join(checkpoint_output,f"{{domain,.*}}.{wildcards.src}.gz")).domain
 
-#TODO: for domeval, only the fuzzy sentences need to be translated for each index. The non-fuzzies can be reused from a common non-fuzz translation file (generate this separately). Otherwise translation takes ages.
+#TODO: for domeval, only the fuzzy sentences need to be translated for each index. The non-fuzzies can be reused from a common non-fuzzy translation file (generate this separately). Otherwise translation takes ages.
 
-# This translates the domeval sets with various indexes in an economincal fashion, i.e. only translating fuzzies
+# This translates the domeval sets with various indexes in an economical fashion, i.e. only translating fuzzies
 # TODO: this could also be done with single-file rules, if the non-fuzzy file were to be translated
 # first. Would make the process cleaner, with no need for the output dir
 checkpoint translate_domeval:
     message: "Translating domain evaluation data"
-    log: "{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}/eval/translate_domeval.log"
+    log: "{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/translate_domeval.log"
     conda: None
     container: None
     resources: gpu=gpus_num
@@ -36,35 +38,35 @@ checkpoint translate_domeval:
     priority: 50
     input:
         decoder=ancient(config["marian-decoder"]),
-    	domain_src=lambda wildcards: expand("{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}/{domain}-domeval.{{src}}.gz", domain=find_domain_sets(wildcards, checkpoints.extract_tc_scored)),
-        train_src="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/train-domeval.{src}.gz",
-        all_filtered_src="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/all_filtered-domeval.{src}.gz",
-        decoder_config=f'{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}/{{train_vocab}}/{{train_model}}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml' 
+    	domain_src=lambda wildcards: expand("{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}_{domain}/domeval.{{src}}.gz", domain=find_domain_sets(wildcards, checkpoints.extract_tc_scored)),
+        train_src="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/domeval.{src}.gz",
+        all_filtered_src="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_all_filtered/domeval.{src}.gz",
+        decoder_config=f'{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}_train/finetune{{seg}}_{{learn_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml' 
     output:
-        output_dir=directory("{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}/eval/domeval")
+        output_dir=directory("{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/domeval")
     params:
-        domain_index_src_dir="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}",
-	uses_bands=lambda wildcards: "false" if "nobands" in wildcards.train_model else "true"
+        domain_index_src_dir="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train",
+	uses_bands=lambda wildcards: "false" if "nobands" in wildcards.preprocessing else "true"
     shell: '''pipeline/eval/translate-domeval.sh {params.domain_index_src_dir} {output.output_dir} {wildcards.src} {wildcards.trg} {input.decoder} {input.decoder_config} {params.uses_bands} --mini-batch 128 --workspace 20000 >> {log} 2>&1'''
 
 # This evaluates the translations generated with translate_domeval
 rule eval_domeval:
     message: "Evaluating domain translation quality"
-    log: "{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}/eval/evaluate_domains.log"
+    log: "{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/evaluate_domains.log"
     conda: None
     container: None
     threads: 1
     priority: 50
     input:
-        domain_index_trg=lambda wildcards: expand("{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}/{{train_vocab}}/{{train_model}}/eval/domeval/{domain}-domeval.{{trg}}.gz", domain=find_translate_sets(wildcards, checkpoints.translate_domeval))
+        domain_index_trg=lambda wildcards: expand("{{project_name}}/{{src}}-{{trg}}/{{download_tc_dir}}/extract_tc_scored_{{min_score}}{{nocrawled}}/{{preprocessing}}_train/finetune{{seg}}_{{learn_rate}}_{{epochs}}_{{model_name}}/eval/domeval/{domain}-domeval.{{trg}}.gz", domain=find_translate_sets(wildcards, checkpoints.translate_domeval))
         #baseline_translations="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/subset_5M/baseline_preprocessing_2000/train_joint_spm_vocab_50000_prepend/train_model_train-baseteacher-train/eval/domeval.{trg}"
     output:
-        report('{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}/eval/domeval.done',
+        report('{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/domeval.done',
             category='evaluation', subcategory='model', caption='reports/evaluation.rst')
     params:
-        input_dir="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}/eval/domeval",
+        input_dir="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/domeval",
         domeval_ids="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/domeval.ids.gz",
-        system_id="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}/{train_vocab}/{train_model}",
+        system_id="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/{preprocessing}_train/finetune{seg}_{learn_rate}_{epochs}_{model_name}",
         baseline_translations="{project_name}/{src}-{trg}/{download_tc_dir}/extract_tc_scored_{min_score}{nocrawled}/subset_5M/baseline_preprocessing_2000/train_joint_spm_vocab_50000_prepend/train_model_train-baseteacher-train/eval/domeval.{trg}"
     shell: '''python pipeline/eval/score-domeval.py  --input_dir {params.input_dir} --report {output} --src_lang {wildcards.src} --trg_lang {wildcards.trg} --system_id {params.system_id} --domeval_ids {params.domeval_ids} --baseline_translations {params.baseline_translations} >> {log} 2>&1'''
 
@@ -129,11 +131,27 @@ rule evaluate_ct2:
         ct2_model_dir='{project_name}/{src}-{trg}/{preprocessing}/{train_vocab}/train_model_{model_type}-{training_type}/ct2_conversion'
     shell: '''bash pipeline/eval/eval-ct2.sh "{params.res_prefix}" "{params.dataset_prefix}" {params.src_lng} {params.trg_lng} {params.ct2_model_dir} "{input.src_spm}" {threads} 1 >> {log} 2>&1'''
 
+#TODO: this is a dummy rule right now, add the multisource translation command
+rule evaluate_multisource_ensemble:
+    message: "Evaluating multisource ensemble using HuggingFace"
+    log: "{project_name}/{src}-{trg}/multisource_ensemble/multisource_eval.log"
+    #conda: "envs/base.yml"
+    conda: None
+    container: None
+    threads: workflow.cores
+    #resources: gpu=1
+    priority: 50
+    wildcard_constraints:
+        model="[\w-]+"
+    input: config["multisource_models"]
+    output: "{project_name}/{src}-{trg}/multisource_ensemble/output.txt"
+    shell: '''echo {input} > {output} >> {log} 2>&1'''
+
 
 #TODO: combine model evaluation rules by storing vocabs in model dir with normally trained models as well
 rule evaluate_opus_model:
     message: "Evaluating an OPUS model"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/evaluate_{modeltype}{dataset}.log"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/evaluate_{modeltype}{dataset}.log"
     conda: None
     container: None
     threads: 7
@@ -145,14 +163,14 @@ rule evaluate_opus_model:
         ancient(config["marian-decoder"]),
         eval_source='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}.{src}.gz',
         eval_target='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}.{trg}.gz',
-        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune_{{learn_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
+        model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune{{seg}}_{{learn_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     output:
-        report('{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}.metrics',
+        report('{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}.metrics',
             category='evaluation', subcategory='{model}', caption='reports/evaluation.rst')
     params:
         dataset_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/{dataset}',
-        res_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}',
+        res_prefix='{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learn_rate}_{epochs}_{model_name}/eval/{modeltype}{dataset}',
         decoder_config=
-            lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/decoder.yml' if wildcards.modeltype=="basemodel-" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learn_rate}_{wildcards.epochs}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml',
+            lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/decoder.yml' if wildcards.modeltype=="basemodel-" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune{wildcards.seg}_{wildcards.learn_rate}_{wildcards.epochs}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz.decoder.yml',
     	decoder=config["marian-decoder"]
     shell: '''bash pipeline/eval/eval-gpu.sh "{params.res_prefix}" "{params.dataset_prefix}" {wildcards.src} {wildcards.trg} {params.decoder} "{params.decoder_config}" >> {log} 2>&1'''

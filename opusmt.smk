@@ -24,6 +24,35 @@ rule download_opus_model:
     shell: '''bash pipeline/opusmt/download-model.sh \
                 "{wildcards.model_name}" "{params.model_dir}" "{output.model}" "{wildcards.src}" "{wildcards.trg}" >> {log} 2>&1'''
 
+# Prepare corpus for finetuning, this is separate from the finetune rule as that runs on GPU and this does longish CPU prep
+rule prepare_finetune_opusmt:
+    message: "Preparing corpus for finetuning OPUS-MT model"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/finetune.log"
+    conda: "envs/base.yml"
+    wildcard_constraints:
+        learning_rate="\d+"
+    threads: 1
+    input:
+        basemodeldir="{datadir}/models/{src}-{trg}/{model_name}",
+        dev_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{src}.gz",
+        dev_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{trg}.gz",
+        train_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.{src}.gz",
+        train_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.{trg}.gz",
+        marian=ancient(config["marian"]),
+        #vocab="{project_name}/{src}-{trg}/{preprocessing}/{train_vocab}/vocab.spm"
+    output: 
+        dev_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/valid.sp.{src}.gz",
+        dev_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/valid.sp.{trg}.gz",
+        train_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/train.sp.{src}.gz",
+        train_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/train.sp.{trg}.gz",
+        vocab="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/vocab.yml",
+    params: 
+        prefix_train="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train",
+        prefix_dev="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev",
+        segmented_input=lambda wildcards: "true" if wildcards.seg else "false",
+        modeldir="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/"
+    shell: '''bash pipeline/opusmt/prep_finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{params.modeldir}" "{input.basemodeldir}" "{params.segmented_input}" >> {log} 2>&1'''
+
 rule finetune_opusmt:
     message: "Finetune OPUS-MT model on corpus"
     log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/finetune.log"
@@ -33,22 +62,20 @@ rule finetune_opusmt:
     threads: gpus_num*7
     resources: gpu=gpus_num
     input:
-        model=lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz' if wildcards.epochs == "1" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune_{wildcards.learning_rate}_{int(wildcards.epochs)-1}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz',
-        dev_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{src}.gz",
-        dev_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev.{trg}.gz",
-        train_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.{src}.gz",
-        train_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.{trg}.gz",
+        model=lambda wildcards: f'{wildcards.datadir}/models/{wildcards.src}-{wildcards.trg}/{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz' if wildcards.epochs == "1" else f'{wildcards.datadir}/{wildcards.project_name}/{wildcards.src}-{wildcards.trg}/{wildcards.preprocessing}/finetune{wildcards.seg}_{wildcards.learning_rate}_{int(wildcards.epochs)-1}_{wildcards.model_name}/final.model.npz.best-{config["best-model-metric"]}.npz',
+        dev_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_1_{model_name}/valid.sp.{src}.gz",
+        dev_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_1_{model_name}/valid.sp.{trg}.gz",
+        train_source="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_1_{model_name}/train.sp.{src}.gz",
+        train_target="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_1_{model_name}/train.sp.{trg}.gz",
         marian=ancient(config["marian"]),
-        #vocab="{project_name}/{src}-{trg}/{preprocessing}/{train_vocab}/vocab.spm"
+        vocab="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_1_{model_name}/vocab.yml",
     output: 
         model=f'{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/finetune{{seg}}_{{learning_rate}}_{{epochs}}_{{model_name}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     params: 
-        prefix_train="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train",
-        prefix_dev="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/dev",
         args=config["finetune-args"],
         best_metric=config["best-model-metric"],
         segmented_input=lambda wildcards: "true" if wildcards.seg else "false" 
-    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{params.prefix_train}" "{params.prefix_dev}" "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" "{params.segmented_input}" {params.args} >> {log} 2>&1'''
+    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" "{params.segmented_input}" "{input.vocab}" {params.args} >> {log} 2>&1'''
 
 
 rule ct2_conversion:

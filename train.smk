@@ -12,6 +12,19 @@ wildcard_constraints:
 
 gpus_num=config["gpus-num"]
 
+rule convert_marian_to_hf:
+    message: "Converting Marian model for use with HuggingFace transformers library"
+    log: "{preprocessing}/convert_to_hf/convert.log"
+    threads: 1
+    input:
+        marian_model=f'{{preprocessing}}/final.model.npz.best-{config["best-model-metric"]}.npz'
+    output:
+        hf_model="{preprocessing}/convert_to_hf/model.safetensors"
+    params:
+        model_name=f'final.model.npz.best-{config["best-model-metric"]}.npz'
+    shell: '''python pipeline/hf/convert_marian_to_pytorch.py --src {wildcards.preprocessing} --dest {wildcards.preprocessing}/convert_to_hf --model_name {params.model_name}'''
+        
+
 rule ensemble_models:
     wildcard_constraints:
         model1="train_model[^\+]+(?=\+)",
