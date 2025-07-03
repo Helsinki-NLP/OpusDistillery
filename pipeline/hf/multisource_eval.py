@@ -22,7 +22,7 @@ def load_model(model_name_or_path, device):
             torch_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16).to(device).eval()
         model_type = "causal_lm"
 
-    return model, model_type
+    return model
     
 def load_tokenizer(model_name_or_path):
     config = AutoConfig.from_pretrained(model_name_or_path)
@@ -35,7 +35,13 @@ def load_tokenizer(model_name_or_path):
 
     return tokenizer
     
-def augment_tokenize_batched(texts, terms_list, fuzzy_list, tokenizer, padding_side, device="cuda"):
+def augment_tokenize_batched(
+        texts,
+        terms_list, 
+        fuzzy_list, 
+        tokenizer, 
+        padding_side, 
+        device="cuda"):
     """
     Process batched input of texts and terms for augmentation.
     
@@ -133,7 +139,7 @@ def sum_ignore_inf(tensor):
 def combine_with_guide_softmax(
     softmax_tensor: torch.Tensor,
     tokenizer,
-    emphasis_strength: float = 10.0
+    emphasis_strength: float = 100.0
 ) -> torch.Tensor:
     """
     Combines model softmaxes using the last model as a guide.
@@ -219,14 +225,14 @@ def weighted_softmax_combine(softmax_tensor: torch.Tensor, tokenizer, temperatur
     return combined_softmax
     
 class MultiInputLogitsProcessor(LogitsProcessor):
-    def __init__(self, models, model_types, tokenizer, models_info, only_main_model=False, num_beams=1):
+    def __init__(self, models, model_types, tokenizer, only_main_model=False, num_beams=1):
         self.models = models
         self.model_types = model_types
         self.tokenizer = tokenizer
-        self.models_info = models_info
         self.current_inputs = {}  # Will store prepared inputs for each model
         self.only_main_model = only_main_model
         self.num_beams = num_beams
+        self.device = models["base"].device
 
     def viking_template(self, sentence):
         return f"<|im_start|>user\nTranslate into Finnish: {sentence}<|im_end|>\n<|im_start|>assistant\n"
@@ -239,22 +245,24 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         self.current_inputs = {}
         batch_size = len(src_and_terms[0])
         
-        for i, (model, model_type, src_and_terms_for_model) in enumerate(zip(self.models, self.model_types, src_and_terms)):
-            print(src_and_terms_for_model)
+        for i, src_and_terms_for_model in enumerate(src_and_terms):
             src_sentences, terms, fuzzies = zip(*src_and_terms_for_model)
             
             # If this is a Marian model with LLM vocab, apply template to fix LLM tokenizer
             # differences with expected Marian tokenization 
-            if model_type == "marian" and not isinstance(self.tokenizer, MarianTokenizer):
+            # Commented out for now, since we're only using Marian now
+            """if model_type == "marian" and not isinstance(self.tokenizer, MarianTokenizer):
                 templated_src_sentences = [self.marian_llmvoc_template(x) for x in src_sentences]
                 padding_side = "right"
             elif model_type != "marian":
                 templated_src_sentences = [self.viking_template(x) for x in src_sentences]
                 padding_side = "left"
-            else:
-                templated_src_sentences = src_sentences
-                padding_side = "right"
-            if any(terms):
+            else:"""
+            
+            templated_src_sentences = src_sentences
+            padding_side = "right"
+            
+            if any(terms) or any(fuzzies):
                 # inputs = augment_tokenize(
                 inputs = augment_tokenize_batched(
                     templated_src_sentences, 
@@ -262,7 +270,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
                     fuzzies,
                     self.tokenizer, 
                     padding_side,
-                    model.device
+                    self.device
                 )
             else:
                 inputs = self.tokenizer(
@@ -271,7 +279,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
                     padding=True,
                     truncation=True,
                     padding_side=padding_side
-                ).to(model.device)
+                ).to(self.device)
             
             # Expand inputs for beam search, except for main model (that already gets
             # expanded by HF)
@@ -291,12 +299,11 @@ class MultiInputLogitsProcessor(LogitsProcessor):
                 "original_batch_size": batch_size
             }
             
-            print(self.tokenizer.batch_decode(encoder_input_ids))
+            print("Model inputs:\n" + "\n".join(self.tokenizer.batch_decode(encoder_input_ids)))
 
     def __call__(self, input_ids, scores):
-        # TODO: test with two aux models, not using the main model at all. Will the terms work there?
         if self.only_main_model:
-            # Why does this return non-sense, when averaging identical input sentence outputs
+            # Why does this return nonsense, when averaging identical input sentence outputs
             # does not?
             return scores
         
@@ -312,25 +319,25 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         """Average probabilities from all models (log space)"""
         batch_size_times_beams = input_ids.shape[0]
         vocab_size = scores.shape[-1]
-        all_probs = torch.zeros((len(self.models), batch_size_times_beams, vocab_size),
+        all_probs = torch.zeros((len(self.model_types), batch_size_times_beams, vocab_size),
                               device=scores.device)
         
-        for i, (model, model_type) in enumerate(zip(self.models, self.model_types)):
+        for i, model_type in enumerate(self.model_types):
             if i == 0:
                 all_probs[i] = torch.exp(scores)
-            else:
+            elif model_type:
                 logits = self._get_model_logits(
-                    model,
+                    self.models[model_type],
                     model_type,
                     self.current_inputs[i]["encoder_input_ids"],
                     self.current_inputs[i]["attention_mask"],
-                    input_ids,
-                    i
+                    input_ids
                 )
                 all_probs[i] = torch.nn.functional.softmax(logits, dim=-1)
         
         #remove the main model tensor (it behaves weirdly)
         all_probs = all_probs[1:, :, :]
+
         #mean_log_probs = torch.log(all_probs.mean(dim=0))
         
         #mean_log_probs = torch.log(weighted_softmax_combine(all_probs, self.tokenizer))
@@ -339,15 +346,17 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         return mean_log_probs
         #return torch.logsumexp(all_probs, dim=0) - torch.log(torch.tensor(len(self.models), device=scores.device))
 
-    def _get_model_logits(self, model, model_type, encoder_inputs, attention_mask, input_ids, model_idx):
+    def _get_model_logits(self, model, model_type, encoder_inputs, attention_mask, input_ids):
         """Get logits from a single model"""
         with torch.no_grad():
-            if model_type == "marian":
-                outputs = model(
+            outputs = model(
                     input_ids=encoder_inputs,
                     attention_mask=attention_mask,
                     decoder_input_ids=input_ids,
                 )
+            # Commented, because we only use Marian for now
+            """if model_type == "marian":
+                
             else:
                 input_ids_full = torch.cat([encoder_inputs, input_ids], dim=-1)
                 attention_mask_full = torch.cat([
@@ -358,63 +367,64 @@ class MultiInputLogitsProcessor(LogitsProcessor):
                 outputs = model(
                     input_ids=input_ids_full,
                     attention_mask=attention_mask_full,
-                )
+                )"""
             
             logits = outputs.logits[:, -1, :]
+            # Give no probability to pad token
             logits[:, [self.tokenizer.pad_token_id]] = -float('inf')
             return logits
             
 class ModelGroup():
-    def __init__(self, models_info, tokenizer_path):
+    def __init__(self, base_model, term_model, fuzzy_model):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.models = []
+        self.models = {}
         self.model_types = []
-        self.tokenizer = load_tokenizer(tokenizer_path)
+        self.tokenizer = load_tokenizer(base_model)
         
-        for info in models_info:
-            model, model_type = load_model(info["name"], self.device)
-            self.models.append(model)
-            self.model_types.append(model_type)
+        self.models["base"] = load_model(base_model, self.device)
+        self.models["term"] = load_model(term_model, self.device)
+        self.models["fuzzy"] = load_model(fuzzy_model, self.device)        
             
 class ShallowFusion:
-    def __init__(self, models_info, model_group, main_model_idx=0):
-        self.models_info = models_info
-        self.main_model_idx = main_model_idx
+    def __init__(self, model_group):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.models = model_group.models
-        self.model_types = model_group.model_types
         self.tokenizer = model_group.tokenizer
     
-    def translate(self, src_and_terms, num_beams=4, max_length=50, only_main_model=False):
+    def translate(self, src_and_terms, model_types, num_beams=4, max_length=50, only_main_model=False):
         # Initialize logits processor
         logits_processor = MultiInputLogitsProcessor(
             models=self.models,
-            model_types=self.model_types,
+            model_types=model_types,
             tokenizer=self.tokenizer,
-            models_info=self.models_info,
             only_main_model=only_main_model,
             num_beams=num_beams)
         
         # Prepare all model inputs
+        # TODO: this does not seem to be set up for batching yet (do we need batching for this experiment)
         logits_processor.prepare_inputs(src_and_terms, num_beams)
         
         # Get main model components
-        main_model = self.models[self.main_model_idx]
-        main_inputs = logits_processor.current_inputs[self.main_model_idx]
+        main_model = self.models["base"]
+        main_inputs = logits_processor.current_inputs[0]
         
         # Generate with ensemble
+        
+        outputs = main_model.generate(
+            input_ids=main_inputs["encoder_input_ids"],
+            attention_mask=main_inputs["attention_mask"],
+            num_beams=num_beams,
+            max_length=max_length,
+            logits_processor=[logits_processor],
+            early_stopping=True,
+            eos_token_id=self.tokenizer.eos_token_id,
+            use_cache=False,
+            pad_token_id=self.tokenizer.pad_token_id,
+        )
+
+        #Commented out because we only use Marian for now
+        """
         if self.model_types[self.main_model_idx] == "marian":
-            outputs = main_model.generate(
-                input_ids=main_inputs["encoder_input_ids"],
-                attention_mask=main_inputs["attention_mask"],
-                num_beams=num_beams,
-                max_length=max_length,
-                logits_processor=[logits_processor],
-                early_stopping=True,
-                eos_token_id=self.tokenizer.eos_token_id,
-                use_cache=False,
-                pad_token_id=self.tokenizer.pad_token_id,
-            )
         else:
             outputs = main_model.generate(
                 input_ids=main_inputs["encoder_input_ids"],
@@ -426,98 +436,157 @@ class ShallowFusion:
                 eos_token_id=23,
                 pad_token_id=self.tokenizer.pad_token_id
             )
+        """
         
         return self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
+import json
+from itertools import chain, combinations, product
+from collections import defaultdict
+
+def powerset(iterable):
+    """Returns all subsets (including empty set)"""
+    s = list(iterable)
+    return list(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
+
+def powerset_nonempty(iterable):
+    """Returns all non-empty subsets"""
+    s = list(iterable)
+    return list(chain.from_iterable(combinations(s, r) for r in range(1, len(s)+1)))
+
 def create_test_cases(test_suite_path):
-    # First expand the test cases to account for all term variants
-    expanded_cases = []
     with open(test_suite_path, "r", encoding="utf-8") as f:
         json_data = json.load(f)
+
+    grouped = defaultdict(list)
+
     for entry in json_data:
         source = entry["source"]
         retrieved = entry.get("retrieved", {})
-        fuzzy_targets = [f["target"] for f in retrieved.get("fuzzy_matches", [])]
-        
         terms = retrieved.get("terms", {})
-        if not terms:
-            # Case with no terms (just fuzzy matches)
-            expanded_cases.append({
-                "source": source,
-                "fuzzy": fuzzy_targets,
-                "terms": None
-            })
-        else:
-            # Create one test case per term variant
-            for source_term, target_data in terms.items():
-                for variant in target_data.get("target", []):
-                    expanded_cases.append({
-                        "source": source,
-                        "fuzzy": fuzzy_targets,
-                        "terms": (source_term, variant["term"])
-                    })
-    
-    # Now build the aligned lists
-    guide_input = []
-    fuzzy_list = []
-    term_list = []
-    
-    for case in expanded_cases:
-        guide_input.append((case["source"], None, None))
-        fuzzy_list.append((case["source"], [], case["fuzzy"]) if case["fuzzy"] else None)
-        term_list.append((case["source"], [case["terms"]], []) if case["terms"] else None)
-    
-    return [guide_input, fuzzy_list, term_list, guide_input]
+        fuzzies = [fuzzy["target"] for fuzzy in retrieved.get("fuzzy_matches", [])]
 
-def main(model_dirs, source_lang, target_lang, test_suite_path):
-    print("Model directories:", model_dirs)
-    print("Source language:", source_lang)
-    print("Target language:", target_lang)
+        fuzzy_subsets = powerset(fuzzies)
+
+        # Group target variants by source term
+        term_groups = {
+            src_term: [(src_term, v["term"]) for v in variants.get("target", [])]
+            for src_term, variants in terms.items()
+        }
+
+        # Get all combinations of 1 variant per source term (choose subset of source terms)
+        source_term_subsets = powerset(term_groups.keys())
+
+        for subset in source_term_subsets:
+            if not subset:
+                continue  # skip empty set here, we'll handle fuzzies-only separately
+
+            # For each source term in this subset, pick one variant
+            variant_options = [term_groups[term] for term in subset]
+            for term_combination in product(*variant_options):
+                for fuzzy_subset in fuzzy_subsets:
+                    grouped[(len(term_combination), len(fuzzy_subset))].append(
+                        (source, list(term_combination), list(fuzzy_subset))
+                    )
+
+        # Fuzzies-only subsets (0 terms, ≥1 fuzzies)
+        if fuzzies:
+            for fuzzy_subset in powerset_nonempty(fuzzies):
+                grouped[(0, len(fuzzy_subset))].append(
+                    (source, [], list(fuzzy_subset))
+                )
+
+    return grouped
+
+
+def break_down_group(group):
+    broken_down = []
+
+    for source, terms, fuzzies in group:
+        case_breakdown = []
+
+        # Base case at start
+        case_breakdown.append((source, None, None))
+
+        # Individual term subcases
+        for term in terms:
+            case_breakdown.append((source, [term], []))
+
+        # Individual fuzzy subcases
+        for fuzzy in fuzzies:
+            case_breakdown.append((source, [], [fuzzy]))
+
+        # Base case at end
+        case_breakdown.append((source, None, None))
+
+        broken_down.append(case_breakdown)
+
+    return broken_down
+
+
+
+def main(args):
+    print("Base model:", args.base_model)
+    print("Term model:", args.term_model)
+    print("Fuzzy model:", args.fuzzy_model)
+    print("Source language:", args.source_lang)
+    print("Target language:", args.target_lang)
     
-    # TODO: create a model group consisting of enough models to handle all the test cases in the test suite.
-    # Maybe each model should have a config file expressing how many terms, ngrams, full matches they support?
-    # That would save having to give the info on the command line. 
-    # Then iterate the test cases, and assign retrieved information to each model according to their capabilities.
+    # Create a model group containing four types of models:
+    # 1. base model, used as the guide model
+    # 2. term model, translates source sent annotated with terms
+    # 3. fuzzy model, for fuzzies
+    # NOT YET IMPLEMENTED: 4. subsegment model, for subsegments
     
-    # First model in the list is the main model, which is actually not used (due to weirdness in logit processor handling),
-    # duplicate first model to act as the dummy
-    model_dirs = [model_dirs[0]] + model_dirs
-    
-    # Last model in the list is the guide model, just use the last model as a standin for now (FIX LATER to use base model!)
-    model_dirs.append(model_dirs[-1])
-    models_info = [{"name": x, "terms": None} for x in model_dirs]
-    model_group = ModelGroup(models_info, tokenizer_path=model_dirs[0])
-    ensemble = ShallowFusion(models_info, model_group)
+    model_group = ModelGroup(args.base_model, args.term_model, args.fuzzy_model)
+    ensemble = ShallowFusion(model_group)
     num_beams = 6
     
-    test_cases = create_test_cases(test_suite_path)
-    translations = ensemble.translate(
-        test_cases,
-        num_beams=num_beams,
-        max_length=100,
-        only_main_model=False
-    )
-    
-    print(translations)
+    test_case_groups = create_test_cases(args.test_suite_path)
+    for (term_count,fuzzy_count),test_case_group in test_case_groups.items():
+        test_cases = break_down_group(test_case_group)
+        model_types = ["base"] + ["term"]*term_count + ["fuzzy"]*fuzzy_count + ["base"]
+        translations = ensemble.translate(
+            test_cases,
+            model_types,
+            num_beams=num_beams,
+            max_length=100,
+            only_main_model=False
+        )
+    fuzzies = [x[2] for x in test_cases[1]]
+    terms = [x[1] for x in test_cases[2]]
+    print("\n".join([f"Fuzzies: {x[0]}, Terms: {x[1]}, Translation: {x[2]}" for x in (zip(fuzzies,terms,translations))]))
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate test suite test cases using an ensemble of models accepting different kinds of retrieved information (terms, ngrams, full matches).")
     
     parser.add_argument(
-        "model_dirs",
-        nargs="+",
-        help="List of paths to model directories."
+        "--base_model",
+        required=True,
+        help="Base model to use as contrast model."
     )
-    
+
     parser.add_argument(
-        "--source-lang",
+        "--term_model",
+        required=True,
+        help="Term model."
+    )
+
+    parser.add_argument(
+        "--fuzzy_model",
+        required=True,
+        help="Fuzzy model."
+    )
+        
+    parser.add_argument(
+        "--source_lang",
         required=True,
         help="Source language code (e.g., 'en')."
     )
     
     parser.add_argument(
-        "--target-lang",
+        "--target_lang",
         required=True,
         help="Target language code (e.g., 'fr')."
     )
@@ -529,4 +598,4 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
-    main(args.model_dirs, args.source_lang, args.target_lang, args.test_suite_path)
+    main(args)
