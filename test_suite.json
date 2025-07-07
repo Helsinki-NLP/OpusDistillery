@@ -1,0 +1,258 @@
+[
+  {
+    "source": "Store the device in a box after use.",
+    "reference": "Säilytä laite laatikossa käytön jälkeen.",
+    "retrieved": {
+      "terms": {
+        "box": {
+          "target": [
+            {
+              "term": "laatikko",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\blaatikk?o(.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "rasia",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\rasi[ao](.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "kotelo",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\kotelo(.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "pakkaus",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\pakkau[ks](.*)?\\b"
+                }
+              ]
+            }
+          ]
+        },
+        "device": {
+          "target": [
+            {
+              "term": "kone",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\kone(.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "laite",
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\blaitt?e(.*)?\\b"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "fuzzy_matches": [
+        {
+          "source": "Inspect the device in a box after cleaning.",
+          "target": "Tutki laite laatikossa puhdistuksen jälkeen.",
+          "tests": [
+            {
+              "type": "surface_form_present",
+              "test": "\\blaatikossa\\b"
+            },
+            {
+              "type": "surface_form_present",
+              "test": "\\jälkeen\\b"              
+            },
+            {
+              "type": "surface_form_present",
+              "test": "\\laite\\b",
+              "term_override": "device"
+            },
+            {
+              "type": "morphological_form_present",
+              "test": "\\([Ss]äilytä|Pidä)\\b"
+            },
+            {
+              "type": "morphological_form_present",
+              "test": "\\(käytön|käyttämisen)\\b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "source": "Open the package carefully to avoid damage.",
+    "reference": "Avaa paketti varovasti vaurioiden välttämiseksi.",
+    "retrieved": {
+      "terms": {
+        "damage": {
+          "target": [
+            {
+              "term": "vaurio",
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\vaurio(.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "vahinko",
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\vahinko(.*)?\\b"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "fuzzy_matches": [
+        {
+          "source": "Unpack the package slowly to prevent damage.",
+          "target": "Pura paketti hitaasti vaurioiden estämiseksi.",
+          "tests": [
+            {
+              "type": "surface_form_present",
+              "test": "\\vaurioiden\\b",
+              "term_override": "damage"
+            },
+            {
+              "type": "surface_form_present",
+              "test": "\\paketti\\b",
+              "term_override": "package"
+            },
+            {
+              "type": "surface_form_present",
+              "test": "\\välttämiseksi\\b"
+            },
+            {
+              "type": "morphological_form_present",
+              "test": "\\([Ss]äilytä|Pidä)\\b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "source": "Charge the battery fully before first use.",
+    "reference": "Lataa akku täyteen ennen ensimmäistä käyttöä.",
+    "retrieved": {
+      "terms": {
+        "battery": {
+          "target": [
+            {
+              "term": "akku",
+              "test": "\\bakku[a-z]*\\b"
+            },
+            {
+              "term": "paristo",
+              "test": "\\bparisto[a-z]*\\b"
+            }
+          ]
+        }
+      },
+      "fuzzy_matches": [
+        {
+          "source": "Insert the battery before starting the device.",
+          "target": "Aseta akku paikalleen ennen laitteen käynnistämistä.",
+          "tests": [
+            {
+              "segment": "akku",
+              "test": "\\bakku\\b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "source": "Turn off the light when leaving the room.",
+    "reference": "Sammuta valo, kun lähdet huoneesta.",
+    "retrieved": {
+      "terms": {
+        "light": {
+          "target": [
+            {
+              "term": "valo",
+              "test": "\\bvalo[a-z]*\\b"
+            },
+            {
+              "term": "lamppu",
+              "test": "\\blamppu[a-z]*\\b"
+            }
+          ]
+        }
+      },
+      "fuzzy_matches": [
+        {
+          "source": "Turn the light off before going outside.",
+          "target": "Sammuta valo ulos lähtiessäsi.",
+          "tests": [
+            {
+              "segment": "valo",
+              "test": "\\bvalo\\b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "source": "Close the lid to keep the contents fresh.",
+    "reference": "Sulje kansi, jotta sisältö pysyy tuoreena.",
+    "retrieved": {
+      "terms": {
+        "lid": {
+          "target": [
+            {
+              "term": "kansi",
+              "test": "\\bkansi[a-z]*\\b"
+            },
+            {
+              "term": "läppä",
+              "test": "\\bläppä[a-z]*\\b"
+            }
+          ]
+        }
+      },
+      "fuzzy_matches": [
+        {
+          "source": "Seal the lid so it stays airtight.",
+          "target": "Tiivistä kansi, jotta se pysyy ilmatiiviinä.",
+          "tests": [
+            {
+              "segment": "kansi",
+              "test": "\\bkansi\\b"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

@@ -3,6 +3,8 @@ import torch.nn.functional as F
 import json
 import argparse
 from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer
+from itertools import chain, combinations, product
+from collections import defaultdict
 
 # This script is used to ensemble models with same vocabulary, with the possibility of defining different inputs for each model.
 # The models can be Marian models or LLMs, although note that since they need to share vocabularies, the Marian model vocabulary
@@ -13,7 +15,6 @@ def load_model(model_name_or_path, device):
 
     # Check model type by architecture string
     if "Marian" in config.model_type or config.architectures and any("Marian" in arch for arch in config.architectures):
-        print(model_name_or_path)
         model = MarianMTModel.from_pretrained(model_name_or_path).to(device).eval()
         model_type = "marian"
     else:
@@ -139,7 +140,7 @@ def sum_ignore_inf(tensor):
 def combine_with_guide_softmax(
     softmax_tensor: torch.Tensor,
     tokenizer,
-    emphasis_strength: float = 100.0
+    emphasis_strength: float = 10000.0
 ) -> torch.Tensor:
     """
     Combines model softmaxes using the last model as a guide.
@@ -225,14 +226,21 @@ def weighted_softmax_combine(softmax_tensor: torch.Tensor, tokenizer, temperatur
     return combined_softmax
     
 class MultiInputLogitsProcessor(LogitsProcessor):
-    def __init__(self, models, model_types, tokenizer, only_main_model=False, num_beams=1):
+    def __init__(
+            self, 
+            models, 
+            model_types, 
+            tokenizer, 
+            only_main_model=False, 
+            num_beams=1, 
+            single_model=False):
         self.models = models
         self.model_types = model_types
         self.tokenizer = tokenizer
-        self.current_inputs = {}  # Will store prepared inputs for each model
         self.only_main_model = only_main_model
         self.num_beams = num_beams
         self.device = models["base"].device
+        self.single_model = single_model
 
     def viking_template(self, sentence):
         return f"<|im_start|>user\nTranslate into Finnish: {sentence}<|im_end|>\n<|im_start|>assistant\n"
@@ -306,13 +314,31 @@ class MultiInputLogitsProcessor(LogitsProcessor):
             # Why does this return nonsense, when averaging identical input sentence outputs
             # does not?
             return scores
-        
+
+        # TODO: handle baseline and single model output here
+        # For some reason, generate produces junk with some converted models,
+        # so do the single model generation without ensemble here as well.
+        if self.single_model:
+            if len(self.model_types) > 3:
+                raise Exception('Single model option is only valid if there is only one special model.')
+            # The single model will be at position 1
+            model_type = self.model_types[1]
+            logits = self._get_model_logits(
+                    self.models[model_type],
+                    model_type,
+                    self.current_inputs[1]["encoder_input_ids"],
+                    self.current_inputs[1]["attention_mask"],
+                    input_ids
+                )
+            return torch.nn.functional.softmax(logits, dim=-1)
+            #return logits
+
         avg_probs = self._average_probs(input_ids, scores)
         
-        difference = scores-avg_probs
-        summed_difference = sum_ignore_inf(difference)
-        print(summed_difference)
-        top5 = torch.topk(avg_probs,5)
+        #difference = scores-avg_probs
+        #summed_difference = sum_ignore_inf(difference)
+        #print(summed_difference)
+        #top5 = torch.topk(avg_probs,5)
         return avg_probs
 
     def _average_probs(self, input_ids, scores):
@@ -325,7 +351,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         for i, model_type in enumerate(self.model_types):
             if i == 0:
                 all_probs[i] = torch.exp(scores)
-            elif model_type:
+            else:
                 logits = self._get_model_logits(
                     self.models[model_type],
                     model_type,
@@ -379,7 +405,9 @@ class ModelGroup():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.models = {}
         self.model_types = []
-        self.tokenizer = load_tokenizer(base_model)
+        # Use either fuzzy or term tokenizer, as the base model vocab does not have the
+        # special symbols.
+        self.tokenizer = load_tokenizer(fuzzy_model)
         
         self.models["base"] = load_model(base_model, self.device)
         self.models["term"] = load_model(term_model, self.device)
@@ -391,14 +419,22 @@ class ShallowFusion:
         self.models = model_group.models
         self.tokenizer = model_group.tokenizer
     
-    def translate(self, src_and_terms, model_types, num_beams=4, max_length=50, only_main_model=False):
+    def translate(
+            self, 
+            src_and_terms, 
+            model_types, 
+            num_beams=4, 
+            max_length=50, 
+            only_main_model=False,
+            single_model=False):
         # Initialize logits processor
         logits_processor = MultiInputLogitsProcessor(
             models=self.models,
             model_types=model_types,
             tokenizer=self.tokenizer,
             only_main_model=only_main_model,
-            num_beams=num_beams)
+            num_beams=num_beams,
+            single_model=single_model)
         
         # Prepare all model inputs
         # TODO: this does not seem to be set up for batching yet (do we need batching for this experiment)
@@ -440,9 +476,6 @@ class ShallowFusion:
         
         return self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-import json
-from itertools import chain, combinations, product
-from collections import defaultdict
 
 def powerset(iterable):
     """Returns all subsets (including empty set)"""
@@ -500,30 +533,75 @@ def create_test_cases(test_suite_path):
 
 
 def break_down_group(group):
-    broken_down = []
+    """
+    For a group of test cases with same number of terms/fuzzies,
+    break it into a list of model configurations (all same source sentences),
+    where each model corresponds to a different term/fuzzy selection across entries.
+    """
+    base_start = []
+    base_end = []
+    term_models = []
+    fuzzy_models = []
 
-    for source, terms, fuzzies in group:
-        case_breakdown = []
+    # Collect all sources, and max number of terms and fuzzies per test case
+    sources = [entry[0] for entry in group]
+    all_term_variants = []
+    all_fuzzy_variants = []
 
-        # Base case at start
-        case_breakdown.append((source, None, None))
+    # Track per test case term and fuzzy variants
+    for _, terms, fuzzies in group:
+        all_term_variants.append(terms)
+        all_fuzzy_variants.append(fuzzies)
 
-        # Individual term subcases
-        for term in terms:
-            case_breakdown.append((source, [term], []))
+    # Base model (start)
+    base_start = [(src, None, None) for src in sources]
 
-        # Individual fuzzy subcases
-        for fuzzy in fuzzies:
-            case_breakdown.append((source, [], [fuzzy]))
+    # Build term models
+    term_model_lists = []
+    max_terms = max(len(terms) for terms in all_term_variants)
+    for i in range(max_terms):
+        model = []
+        for terms, src in zip(all_term_variants, sources):
+            if i < len(terms):
+                model.append((src, [terms[i]], []))
+            else:
+                model.append((src, [], []))
+        term_model_lists.append(model)
 
-        # Base case at end
-        case_breakdown.append((source, None, None))
+    # Build fuzzy models
+    fuzzy_model_lists = []
+    max_fuzzies = max(len(fz) for fz in all_fuzzy_variants)
+    for i in range(max_fuzzies):
+        model = []
+        for fuzzies, src in zip(all_fuzzy_variants, sources):
+            if i < len(fuzzies):
+                model.append((src, [], [fuzzies[i]]))
+            else:
+                model.append((src, [], []))
+        fuzzy_model_lists.append(model)
 
-        broken_down.append(case_breakdown)
+    # Base model (end)
+    base_end = [(src, None, None) for src in sources]
 
-    return broken_down
+    return [base_start] + term_model_lists + fuzzy_model_lists + [base_end]
 
 
+def generate_unensembled(test_cases_for_model, model, tokenizer):
+    src_sentences, terms, fuzzies = zip(*test_cases_for_model[1])
+
+    inputs = augment_tokenize_batched(
+        src_sentences, 
+        terms,
+        fuzzies,
+        tokenizer, 
+        "right",
+        model.device
+    )
+    print("Model inputs:\n" + "\n".join(tokenizer.batch_decode(inputs["input_ids"])))
+
+    translated = model.generate(**inputs)
+    print("Without ensembling:" + str([tokenizer.decode(t, skip_special_tokens=True) for t in translated]))
+    return str([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
 
 def main(args):
     print("Base model:", args.base_model)
@@ -553,9 +631,51 @@ def main(args):
             max_length=100,
             only_main_model=False
         )
-    fuzzies = [x[2] for x in test_cases[1]]
-    terms = [x[1] for x in test_cases[2]]
-    print("\n".join([f"Fuzzies: {x[0]}, Terms: {x[1]}, Translation: {x[2]}" for x in (zip(fuzzies,terms,translations))]))
+
+        # If only one model is used, also generate unensembled translations for comparison
+        if len(model_types) == 3:
+            single_model_translations = ensemble.translate(
+                test_cases,
+                model_types,
+                num_beams=num_beams,
+                max_length=100,
+                only_main_model=False,
+                single_model=True
+            )
+
+            # This generates the single model translations using the standard
+            # generate method instead of the ensemble logit processor. For debugging
+            # to see if there's a difference.
+            single_model_translations_with_generate = generate_unensembled(
+                test_cases,
+                model_group.models[model_types[1]],
+                model_group.tokenizer)
+
+            print("test")
+
+        # Record terms and fuzzies for print debugging
+        terms = []
+        fuzzies = []
+
+        for i, model_type in enumerate(model_types):
+            if model_type == "term":
+                if not terms:
+                    terms = [x[1] for x in test_cases[i]]
+                else:
+                    terms = list(zip(terms,[x[1] for x in test_cases[i]]))
+            if model_type == "fuzzy":
+                if not fuzzies:
+                    fuzzies = [x[2] for x in test_cases[i]]
+                else:
+                    fuzzies = list(zip(fuzzies,[x[2] for x in test_cases[i]]))
+
+        if not terms:
+            terms = [None] * len(fuzzies)
+        if not fuzzies:
+            fuzzies = [None] * len(terms)
+
+        print("\n".join([f"Fuzzies: {x[0]}, Terms: {x[1]}, Translation: {x[2]}" for x in (zip(fuzzies,terms,translations))]))
+        
     
 
 if __name__ == "__main__":
