@@ -2,9 +2,11 @@ import torch
 import torch.nn.functional as F
 import json
 import argparse
+import re
 from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer
 from itertools import chain, combinations, product
 from collections import defaultdict
+
 
 # This script is used to ensemble models with same vocabulary, with the possibility of defining different inputs for each model.
 # The models can be Marian models or LLMs, although note that since they need to share vocabularies, the Marian model vocabulary
@@ -408,6 +410,7 @@ class ModelGroup():
         # Use either fuzzy or term tokenizer, as the base model vocab does not have the
         # special symbols.
         self.tokenizer = load_tokenizer(fuzzy_model)
+        self.baseline_tokenizer = load_tokenizer(base_model)
         
         self.models["base"] = load_model(base_model, self.device)
         self.models["term"] = load_model(term_model, self.device)
@@ -671,26 +674,26 @@ def break_down_group(group):
 
     return [base_start] + term_model_lists + fuzzy_model_lists + [base_end]
 
+def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
+    src_sentences, terms, fuzzies = zip(*test_cases_for_model[input_index])
 
-def generate_unensembled(test_cases_for_model, model, tokenizer):
-    src_sentences, terms, fuzzies = zip(*test_cases_for_model[1])
-
-    inputs = augment_tokenize_batched(
-        src_sentences, 
-        terms,
-        fuzzies,
-        tokenizer, 
-        "right",
-        model.device
-    )
+    if input_index==1:
+        inputs = augment_tokenize_batched(
+            src_sentences, 
+            terms,
+            fuzzies,
+            tokenizer, 
+            "right",
+            model.device
+        )
+    else:
+        inputs = tokenizer(src_sentences, return_tensors="pt", padding=True).to(model.device)
     print("Model inputs:\n" + "\n".join(tokenizer.batch_decode(inputs["input_ids"])))
 
     translated = model.generate(**inputs)
     print("Without ensembling:" + str([tokenizer.decode(t, skip_special_tokens=True) for t in translated]))
-    return str([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
+    return [tokenizer.decode(t, skip_special_tokens=True) for t in translated]
 
-import re
-from collections import defaultdict
 
 def evaluate_translations(translations, test_cases):
     """
@@ -781,8 +784,20 @@ def main(args):
             max_length=100,
             only_main_model=False
         )
+
         eval_results = evaluate_translations(translations,test_case_group)
+
+        # generate baseline translations to see the effect that external info makes
+        baseline_translations = generate_unensembled(
+            test_cases,
+            model_group.models[model_types[0]],
+            model_group.baseline_tokenizer,
+            0)
+
+        baseline_eval_results = evaluate_translations(baseline_translations,test_case_group)
+        
         print(eval_results)
+        print(baseline_eval_results)
 
         # If only one model is used, also generate unensembled translations for comparison
         if len(model_types) == 3:
@@ -802,8 +817,6 @@ def main(args):
                 test_cases,
                 model_group.models[model_types[1]],
                 model_group.tokenizer)
-
-            print("test")
 
         # Record terms and fuzzies for print debugging
         terms = []
