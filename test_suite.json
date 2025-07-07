@@ -12,7 +12,7 @@
               [
                 {
                   "type": "term_present",
-                  "condition": "\\blaatikk?o(.*)?\\b"
+                  "condition": "\\b[Ll]aatikk?o(.*)?\\b"
                 }
               ]
             },
@@ -22,7 +22,7 @@
               [
                 {
                   "type": "term_present",
-                  "condition": "\\rasi[ao](.*)?\\b"
+                  "condition": "\\b[Rr]asi[ao](.*)?\\b"
                 }
               ]
             },
@@ -32,7 +32,7 @@
               [
                 {
                   "type": "term_present",
-                  "condition": "\\kotelo(.*)?\\b"
+                  "condition": "\\b[Kk]otelo(.*)?\\b"
                 }
               ]
             },
@@ -42,7 +42,7 @@
               [
                 {
                   "type": "term_present",
-                  "condition": "\\pakkau[ks](.*)?\\b"
+                  "condition": "\\b[Pp]akkau[ks](.*)?\\b"
                 }
               ]
             }
@@ -56,7 +56,7 @@
               [
                 {
                   "type": "term_present",
-                  "condition": "\\kone(.*)?\\b"
+                  "condition": "\\b[Kk]one(.*)?\\b"
                 }
               ]
             },
@@ -65,7 +65,7 @@
               "tests": [
                 {
                   "type": "term_present",
-                  "condition": "\\blaitt?e(.*)?\\b"
+                  "condition": "\\b[Ll]aitt?e(.*)?\\b"
                 }
               ]
             }
@@ -79,24 +79,24 @@
           "tests": [
             {
               "type": "surface_form_present",
-              "test": "\\blaatikossa\\b"
+              "condition": "\\blaatikossa\\b"
             },
             {
               "type": "surface_form_present",
-              "test": "\\jälkeen\\b"              
+              "condition": "\\bjälkeen\\b"              
             },
             {
               "type": "surface_form_present",
-              "test": "\\laite\\b",
-              "term_override": "device"
+              "condition": "\\blaite\\b",
+              "term_conflict": "device"
             },
             {
               "type": "morphological_form_present",
-              "test": "\\([Ss]äilytä|Pidä)\\b"
+              "condition": "\\b([Ss]äilytä|Pidä)\\b"
             },
             {
               "type": "morphological_form_present",
-              "test": "\\(käytön|käyttämisen)\\b"
+              "condition": "\\b(käytön|käyttämisen)\\b"
             }
           ]
         }
@@ -115,7 +115,7 @@
               "tests": [
                 {
                   "type": "term_present",
-                  "condition": "\\vaurio(.*)?\\b"
+                  "condition": "\\b[Vv]aurio(.*)?\\b"
                 }
               ]
             },
@@ -124,7 +124,7 @@
               "tests": [
                 {
                   "type": "term_present",
-                  "condition": "\\vahinko(.*)?\\b"
+                  "condition": "\\b[Vv]ahinko(.*)?\\b"
                 }
               ]
             }
@@ -138,21 +138,31 @@
           "tests": [
             {
               "type": "surface_form_present",
-              "test": "\\vaurioiden\\b",
-              "term_override": "damage"
+              "condition": "\\bvaurioiden\\b",
+              "term_conflict": "damage"
             },
             {
               "type": "surface_form_present",
-              "test": "\\paketti\\b",
-              "term_override": "package"
-            },
-            {
-              "type": "surface_form_present",
-              "test": "\\välttämiseksi\\b"
+              "condition": "\\bpaketti\\b",
+              "term_conflict": "package"
             },
             {
               "type": "morphological_form_present",
-              "test": "\\([Ss]äilytä|Pidä)\\b"
+              "condition": "\\b(välttämiseksi|estämiseksi)\\b"
+            },
+            {
+              "type": "morphological_form_present",
+              "condition": "\\bAvaa\\b"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\bPura\\b",
+              "negative": "true"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\bhitaasti\\b",
+              "negative": "true"
             }
           ]
         }
@@ -160,19 +170,51 @@
     }
   },
   {
-    "source": "Charge the battery fully before first use.",
-    "reference": "Lataa akku täyteen ennen ensimmäistä käyttöä.",
+    "source": "Insert the battery before first use.",
+    "reference": "Kiinnitä akku ennen ensimmäistä käyttöä.",
     "retrieved": {
       "terms": {
         "battery": {
           "target": [
             {
               "term": "akku",
-              "test": "\\bakku[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Aa]kk?u(.*)?\\b"
+                }
+              ]
             },
             {
               "term": "paristo",
-              "test": "\\bparisto[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Pp]aristo(.*)?\\b"
+                }
+              ]
+            }
+          ],
+          "device": {
+          "target": [
+            {
+              "term": "kone",
+              "tests": 
+              [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Kk]one(.*)?\\b"
+                }
+              ]
+            },
+            {
+              "term": "laite",
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Ll]aitt?e(.*)?\\b"
+                }
+              ]
             }
           ]
         }
@@ -183,8 +225,31 @@
           "target": "Aseta akku paikalleen ennen laitteen käynnistämistä.",
           "tests": [
             {
-              "segment": "akku",
-              "test": "\\bakku\\b"
+              "type": "surface_form_present",
+              "condition": "\\bAseta\\b"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\bakku\\b",
+              "term_conflict": "battery"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\bennen\\b"
+            },
+            {
+              "type": "morphological_form_present",
+              "condition": "\\b(käyttöä|käyttämistä|käyttökertaa)\\b"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\laitteen\\b",
+              "negative": "true"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\käynnistämistä\\b",
+              "negative": "true"
             }
           ]
         }
@@ -200,11 +265,21 @@
           "target": [
             {
               "term": "valo",
-              "test": "\\bvalo[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Vv]alo(.*)?\\b"
+                }
+              ]
             },
             {
               "term": "lamppu",
-              "test": "\\blamppu[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Ll]amppu(.*)?\\b"
+                }
+              ]
             }
           ]
         }
@@ -215,8 +290,23 @@
           "target": "Sammuta valo ulos lähtiessäsi.",
           "tests": [
             {
-              "segment": "valo",
-              "test": "\\bvalo\\b"
+              "type": "surface_form_present",
+              "condition": "\\bSammuta\\b"
+            },
+            {
+              "type": "surface_form_present",
+              "condition": "\\valo\\b",
+              "term_conflict": "light"
+            },
+            {
+              "type": "different_construction_used",
+              "condition": "\b[Kkun]\b",
+              "comment": "Using a subclause construction instead of the non-finite construction in the fuzzy."
+              "negative": "true"
+            },
+            {
+              "type": "morphological_form_present",
+              "condition": "\b(.*)*ess[äa]si\b)\\b"
             }
           ]
         }
@@ -232,11 +322,21 @@
           "target": [
             {
               "term": "kansi",
-              "test": "\\bkansi[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Kk]an(si|ne)(.*)?\\b"
+                }
+              ]
             },
             {
               "term": "läppä",
-              "test": "\\bläppä[a-z]*\\b"
+              "tests": [
+                {
+                  "type": "term_present",
+                  "condition": "\\b[Ll]äpp?ä(.*)?\\b"
+                }
+              ]
             }
           ]
         }
@@ -247,8 +347,17 @@
           "target": "Tiivistä kansi, jotta se pysyy ilmatiiviinä.",
           "tests": [
             {
-              "segment": "kansi",
-              "test": "\\bkansi\\b"
+                  "type": "surface_form_present",
+                  "condition": "\\kansi\\b",
+                  "term_conflict": "lid"
+            },
+            {
+                  "type": "surface_form_present",
+                  "condition": "\\jotta se pysyy\\b"
+            },
+            {
+              "type": "morphological_form_present",
+              "condition": "\btuoreena\\b"
             }
           ]
         }
