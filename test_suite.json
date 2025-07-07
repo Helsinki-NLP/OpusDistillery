@@ -8,8 +8,7 @@
           "target": [
             {
               "term": "laatikko",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Ll]aatikk?o(.*)?\\b"
@@ -18,8 +17,7 @@
             },
             {
               "term": "rasia",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Rr]asi[ao](.*)?\\b"
@@ -28,8 +26,7 @@
             },
             {
               "term": "kotelo",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Kk]otelo(.*)?\\b"
@@ -38,8 +35,7 @@
             },
             {
               "term": "pakkaus",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Pp]akkau[ks](.*)?\\b"
@@ -52,8 +48,7 @@
           "target": [
             {
               "term": "kone",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Kk]one(.*)?\\b"
@@ -83,7 +78,7 @@
             },
             {
               "type": "surface_form_present",
-              "condition": "\\bjälkeen\\b"              
+              "condition": "\\bjälkeen\\b"
             },
             {
               "type": "surface_form_present",
@@ -194,13 +189,13 @@
                 }
               ]
             }
-          ],
-          "device": {
+          ]
+        },
+        "device": {
           "target": [
             {
               "term": "kone",
-              "tests": 
-              [
+              "tests": [
                 {
                   "type": "term_present",
                   "condition": "\\b[Kk]one(.*)?\\b"
@@ -243,12 +238,12 @@
             },
             {
               "type": "surface_form_present",
-              "condition": "\\laitteen\\b",
+              "condition": "\\blaitteen\\b",
               "negative": "true"
             },
             {
               "type": "surface_form_present",
-              "condition": "\\käynnistämistä\\b",
+              "condition": "\\bkäynnistämistä\\b",
               "negative": "true"
             }
           ]
@@ -295,18 +290,18 @@
             },
             {
               "type": "surface_form_present",
-              "condition": "\\valo\\b",
+              "condition": "\\bvalo\\b",
               "term_conflict": "light"
             },
             {
               "type": "different_construction_used",
-              "condition": "\b[Kkun]\b",
-              "comment": "Using a subclause construction instead of the non-finite construction in the fuzzy."
+              "condition": "\\b[Kk]un\\b",
+              "comment": "Using a subclause construction instead of the non-finite construction in the fuzzy.",
               "negative": "true"
             },
             {
               "type": "morphological_form_present",
-              "condition": "\b(.*)*ess[äa]si\b)\\b"
+              "condition": "\\b(.*)ess[äa]si\\b"
             }
           ]
         }
@@ -347,13 +342,13 @@
           "target": "Tiivistä kansi, jotta se pysyy ilmatiiviinä.",
           "tests": [
             {
-                  "type": "surface_form_present",
-                  "condition": "\\kansi\\b",
-                  "term_conflict": "lid"
+              "type": "surface_form_present",
+              "condition": "\\bkansi\\b",
+              "term_conflict": "lid"
             },
             {
-                  "type": "surface_form_present",
-                  "condition": "\\jotta se pysyy\\b"
+              "type": "surface_form_present",
+              "condition": "\\bjotta se pysyy\\b"
             },
             {
               "type": "morphological_form_present",
