@@ -7,7 +7,6 @@ from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoMo
 from itertools import chain, combinations, product
 from collections import defaultdict
 
-
 # This script is used to ensemble models with same vocabulary, with the possibility of defining different inputs for each model.
 # The models can be Marian models or LLMs, although note that since they need to share vocabularies, the Marian model vocabulary
 # needs to be adapted to the LLM vocab.
@@ -479,65 +478,6 @@ class ShallowFusion:
         
         return self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-
-def powerset(iterable):
-    """Returns all subsets (including empty set)"""
-    s = list(iterable)
-    return list(chain.from_iterable(combinations(s, r) for r in range(len(s)+1)))
-
-def powerset_nonempty(iterable):
-    """Returns all non-empty subsets"""
-    s = list(iterable)
-    return list(chain.from_iterable(combinations(s, r) for r in range(1, len(s)+1)))
-
-def create_test_cases(test_suite_path):
-    with open(test_suite_path, "r", encoding="utf-8") as f:
-        json_data = json.load(f)
-
-    grouped = defaultdict(list)
-
-    for entry in json_data:
-        source = entry["source"]
-        retrieved = entry.get("retrieved", {})
-        terms = retrieved.get("terms", {})
-        fuzzies = [fuzzy["target"] for fuzzy in retrieved.get("fuzzy_matches", [])]
-
-        fuzzy_subsets = powerset(fuzzies)
-
-        # Group target variants by source term
-        term_groups = {
-            src_term: [(src_term, v["term"]) for v in variants.get("target", [])]
-            for src_term, variants in terms.items()
-        }
-
-        # Get all combinations of 1 variant per source term (choose subset of source terms)
-        source_term_subsets = powerset(term_groups.keys())
-
-        for subset in source_term_subsets:
-            if not subset:
-                continue  # skip empty set here, we'll handle fuzzies-only separately
-
-            # For each source term in this subset, pick one variant
-            variant_options = [term_groups[term] for term in subset]
-            for term_combination in product(*variant_options):
-                for fuzzy_subset in fuzzy_subsets:
-                    grouped[(len(term_combination), len(fuzzy_subset))].append(
-                        (source, list(term_combination), list(fuzzy_subset))
-                    )
-
-        # Fuzzies-only subsets (0 terms, ≥1 fuzzies)
-        if fuzzies:
-            for fuzzy_subset in powerset_nonempty(fuzzies):
-                grouped[(0, len(fuzzy_subset))].append(
-                    (source, [], list(fuzzy_subset))
-                )
-
-    return grouped
-
-from itertools import chain, combinations, product
-from collections import defaultdict
-import json
-
 def powerset(iterable):
     """Returns all subsets (including empty set)"""
     s = list(iterable)
@@ -554,18 +494,16 @@ def create_test_cases_with_tests(test_suite_path):
 
     grouped = defaultdict(list)
 
-    for entry in json_data:
-        source = entry["source"]
-        retrieved = entry.get("retrieved", {})
-        terms = retrieved.get("terms", {})
-        fuzzy_entries = retrieved.get("fuzzy_matches", [])
+    for entry in json_data["examples"]:
+        source = entry["main_sentence"]
+        terms = entry.get("terms", {})
+        fuzzies = [x for x in entry.get("fuzzy_matches", []) if x.get("validated",False) and [y for y in x["translations"] if y.get("validated",False)]]
 
-        fuzzies = fuzzy_entries
         fuzzy_subsets = powerset(fuzzies)
 
         # Group target variants by source term
         term_groups = {
-            src_term: [(src_term, v["term"], v.get("tests", [])) for v in variants.get("target", [])]
+            src_term: [(src_term, v["target"], v.get("tests", [])) for v in variants]
             for src_term, variants in terms.items()
         }
 
@@ -579,27 +517,33 @@ def create_test_cases_with_tests(test_suite_path):
             variant_options = [term_groups[term] for term in subset]
             for term_combination in product(*variant_options):
                 for fuzzy_subset in fuzzy_subsets:
-                    all_tests = []
+                    # create subset for each combination of fuzzy targets
+                    translations_with_tests = [[y for y in x["translations"] if "tests" in y] for x in fuzzy_subset]
 
-                    # Add term tests
-                    for src_term, tgt_term, tests in term_combination:
-                        for test in tests:
-                            test_with_target = dict(test)
-                            test_with_target["target"] = tgt_term
-                            test_with_target["source_term"] = src_term
-                            all_tests.append(test_with_target)
+                    translation_subsets = list(product(*[translations_with_tests]))
+                    for translation_subset in translation_subsets:
+                        
+                        all_tests = []
 
-                    # Add fuzzy tests
-                    for fuzzy in fuzzy_subset:
-                        for test in fuzzy.get("tests", []):
-                            test_with_target = dict(test)
-                            test_with_target["target"] = fuzzy["target"]
-                            all_tests.append(test_with_target)
+                        # Add term tests
+                        for src_term, tgt_term, tests in term_combination:
+                            for test in tests:
+                                test_with_target = dict(test)
+                                test_with_target["target"] = tgt_term
+                                test_with_target["source_term"] = src_term
+                                all_tests.append(test_with_target)
 
-                    grouped[(len(term_combination), len(fuzzy_subset))].append(
-                        (source, [(src_term, tgt_term) for src_term, tgt_term, _ in term_combination],
-                         [f["target"] for f in fuzzy_subset], all_tests)
-                    )
+                        # Add fuzzy tests
+                        for fuzzy in fuzzy_subset:
+                            for test in fuzzy.get("tests", []):
+                                test_with_target = dict(test)
+                                test_with_target["target"] = fuzzy["target"]
+                                all_tests.append(test_with_target)
+
+                        grouped[(len(term_combination), len(fuzzy_subset))].append(
+                            (source, [(src_term, tgt_term) for src_term, tgt_term, _ in term_combination],
+                            [f["target"] for f in fuzzy_subset], all_tests)
+                        )
 
         # Fuzzies-only subsets (0 terms, ≥1 fuzzies)
         if fuzzies:
