@@ -457,7 +457,7 @@ class ShallowFusion:
             early_stopping=True,
             eos_token_id=self.tokenizer.eos_token_id,
             use_cache=False,
-            pad_token_id=self.tokenizer.pad_token_id,
+            pad_token_id=self.tokenizer.pad_token_id
         )
 
         #Commented out because we only use Marian for now
@@ -496,10 +496,9 @@ def create_test_cases_with_tests(test_suite_path):
 
     for entry in json_data["examples"]:
         source = entry["main_sentence"]
+        domain = entry["domain"]
         terms = entry.get("terms", {})
         fuzzies = [x for x in entry.get("fuzzy_matches", []) if x.get("validated",False) and [y for y in x["translations"] if y.get("validated",False)]]
-
-        fuzzy_subsets = powerset(fuzzies)
 
         # Group target variants by source term
         term_groups = {
@@ -507,22 +506,29 @@ def create_test_cases_with_tests(test_suite_path):
             for src_term, variants in terms.items()
         }
 
-        # Get all combinations of 1 variant per source term (choose subset of source terms)
+        # Get powersets of terms and fuzzies
         source_term_subsets = powerset(term_groups.keys())
+        source_fuzzy_subsets = powerset(fuzzies)
 
-        for subset in source_term_subsets:
-            if not subset:
+        # process all source term subsets, including empty set
+        for term_subset in source_term_subsets:
+            if not term_subset:
                 continue  # skip empty set here, we'll handle fuzzies-only separately
 
-            variant_options = [term_groups[term] for term in subset]
-            for term_combination in product(*variant_options):
-                for fuzzy_subset in fuzzy_subsets:
-                    # create subset for each combination of fuzzy targets
-                    translations_with_tests = [[y for y in x["translations"] if "tests" in y] for x in fuzzy_subset]
+            variant_options = [term_groups[term] for term in term_subset]
 
-                    translation_subsets = list(product(*[translations_with_tests]))
-                    for translation_subset in translation_subsets:
-                        
+            # iterate all possible target variations of the source term subset
+            for term_combination in product(*variant_options):
+
+                # process all source fuzzy subsets, including empty set
+                for source_fuzzy_subset in source_fuzzy_subsets:
+                    
+                    # create subset for each combination of fuzzy targets
+                    translations_with_tests = [[y for y in x["translations"] if "tests" in y] for x in source_fuzzy_subset]
+
+                    # process all target fuzzy combinations
+                    translation_subsets = product(*translations_with_tests)
+                    for translation_combination in translation_subsets:
                         all_tests = []
 
                         # Add term tests
@@ -534,36 +540,45 @@ def create_test_cases_with_tests(test_suite_path):
                                 all_tests.append(test_with_target)
 
                         # Add fuzzy tests
-                        for fuzzy in fuzzy_subset:
-                            for test in fuzzy.get("tests", []):
-                                test_with_target = dict(test)
-                                test_with_target["target"] = fuzzy["target"]
-                                all_tests.append(test_with_target)
-
-                        grouped[(len(term_combination), len(fuzzy_subset))].append(
+                        for translation in translation_combination:
+                            test_with_target = \
+                            {
+                                "target": translation["target"],
+                                "type": "fuzzy_tokens",
+                                "condition": dict(translation["tests"])
+                            }
+                            all_tests.append(test_with_target)
+                    
+                        grouped[(len(term_combination), len(source_fuzzy_subset))].append(
                             (source, [(src_term, tgt_term) for src_term, tgt_term, _ in term_combination],
-                            [f["target"] for f in fuzzy_subset], all_tests)
+                            [f["target"] for f in translation_combination], all_tests, domain)
                         )
 
         # Fuzzies-only subsets (0 terms, ≥1 fuzzies)
         if fuzzies:
-            for fuzzy_subset in powerset_nonempty(fuzzies):
-                all_tests = []
-                for fuzzy in fuzzy_subset:
-                    for test in fuzzy.get("tests", []):
-                        test_with_target = dict(test)
-                        test_with_target["target"] = fuzzy["target"]
-                        all_tests.append(test_with_target)
+            for source_fuzzy_subset in powerset_nonempty(fuzzies):
+                # create subset for each combination of fuzzy targets
+                translations_with_tests = [[y for y in x["translations"] if "tests" in y] for x in source_fuzzy_subset]
 
-                grouped[(0, len(fuzzy_subset))].append(
-                    (source, [], [f["target"] for f in fuzzy_subset], all_tests)
-                )
+                # process all target fuzzy combinations
+                translation_subsets = product(*translations_with_tests)
+                for translation_combination in translation_subsets:
+                    all_tests = []
+                    # Add fuzzy tests
+                    for translation in translation_combination:
+                        test_with_target = \
+                            {
+                                "target": translation["target"],
+                                "type": "fuzzy_tokens",
+                                "condition": dict(translation["tests"])
+                            }    
+                        all_tests.append(test_with_target)
+                    
+                    grouped[(0, len(source_fuzzy_subset))].append(
+                        (source, [], [f["target"] for f in translation_combination], all_tests, domain)
+                    )
 
     return grouped
-
-
-
-
 
 def break_down_group(group):
     """
@@ -582,7 +597,7 @@ def break_down_group(group):
     all_fuzzy_variants = []
 
     # Track per test case term and fuzzy variants
-    for _, terms, fuzzies, _ in group:
+    for _, terms, fuzzies, _, _ in group:
         all_term_variants.append(terms)
         all_fuzzy_variants.append(fuzzies)
 
@@ -639,63 +654,86 @@ def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
     return [tokenizer.decode(t, skip_special_tokens=True) for t in translated]
 
 
-def evaluate_translations(translations, test_cases):
+def evaluate_translations(translations, test_cases, existing_results=None):
     """
     translations: list of translation strings (model outputs)
     test_cases: list of tuples (source, terms, fuzzies, tests), aligned with translations
     """
     assert len(translations) == len(test_cases)
     
-    results = defaultdict(lambda: {"passed": 0, "failed": 0, "skipped": 0})
+    if not existing_results:
+        results = {}
+        for domain in ["medical","pharmaceutical","public administration","EU texts","IT administration", "IT customer support", "electronics","legal"]:
+            results[domain] = {"term_present": {"passed":0,"failed":0}, "fuzzy_tokens": {"negative": {"passed":0,"failed":0},"positive": {"passed":0,"failed":0},"positive_bigram": {"passed":0,"failed":0}}}
 
-    for translation, (source, terms, fuzzies, tests) in zip(translations, test_cases):
-        term_status = {}
+    else:
+        results = existing_results
 
-        # First pass: evaluate term tests and record by source_term
+    for translation, (source, terms, fuzzies, tests, domain) in zip(translations, test_cases):
+
+        # for fuzzies, collect results separately for all
+        # fuzzies and only use the best scoring
+        fuzzy_test_results = [] 
+
         for test in tests:
-            if test.get("type") == "term_present":
+            test_type = test["type"]
+            
+            if test_type == "term_present":
                 source_term = test.get("source_term")
                 condition = test.get("condition")
                 pattern = re.compile(condition)
                 target_term = test.get("target")
 
                 if pattern.search(translation):
-                    results[test["type"]]["passed"] += 1
-                    term_status[source_term] = True
+                    results[domain][test_type]["passed"] += 1
                 else:
-                    results[test["type"]]["failed"] += 1
-                    term_status[source_term] = False
+                    results[domain][test_type]["failed"] += 1
 
-        # Second pass: evaluate all other tests
-        for test in tests:
-            if test.get("type") == "term_present":
-                continue  # already processed
+            if test.get("type") == "fuzzy_tokens":
+                condition = test.get("condition")
+                positive_tokens = condition["positive_tokens"]
+                negative_tokens = condition["negative_tokens"]
+                fuzzy_result = {"negative": {"passed":0,"failed":0},"positive": {"passed":0,"failed":0},"positive_bigram": {"passed":0,"failed":0}}
 
-            condition = test.get("condition")
-            test_type = test.get("type")
-            negative = test.get("negative", "false") == "true"
-            pattern = re.compile(condition)
-            match = bool(pattern.search(translation))
+                #TODO: figure out how to compensate for terms in the bigram reward (terms override fuzzies).
 
-            # Handle term_conflict logic
-            term_conflict = test.get("term_conflict")
-            if term_conflict is not None:
-                if term_status.get(term_conflict) is True:
-                    # Term test passed — ignore fuzzy test due to conflict
-                    results[test_type]["skipped"] += 1
-                    continue
+                # also track bigrams to reward correct order            
+                bigrams = []
+                for i in range(len(positive_tokens) - 1):
+                    bigram = positive_tokens[i].lower() + " " + positive_tokens[i+1].lower()
+                    if bigram in test["target"].lower():
+                        bigrams.append(bigram)
 
-            # Evaluate normally
-            if negative:
-                if not match:
-                    results[test_type]["passed"] += 1
-                else:
-                    results[test_type]["failed"] += 1
-            else:
-                if match:
-                    results[test_type]["passed"] += 1
-                else:
-                    results[test_type]["failed"] += 1
+                for pos_token in positive_tokens:
+                    if pos_token.lower() in translation.lower():
+                        fuzzy_result["positive"]["passed"] += 1
+                    else:
+                        fuzzy_result["positive"]["failed"] += 1
+                
+                for pos_bigram in bigrams:
+                    if pos_bigram in translation.lower():
+                        fuzzy_result["positive_bigram"]["passed"] += 1
+                    else:
+                        fuzzy_result["positive_bigram"]["failed"] += 1
+
+                for neg_token in negative_tokens:
+                    if neg_token.lower() in translation.lower():
+                        fuzzy_result["negative"]["failed"] += 1
+                    else:
+                        fuzzy_result["negative"]["passed"] += 1
+                fuzzy_test_results.append(fuzzy_result)
+                
+            # add the best fuzzy results
+            if fuzzy_test_results:
+                best_fuzzy = max(fuzzy_test_results,key=lambda x: 
+                                x["positive"]["passed"]+x["negative"]["passed"]+x["positive_bigram"]["passed"]-x["positive"]["failed"]-x["positive_bigram"]["failed"]-x["negative"]["failed"])
+                results[domain]["fuzzy_tokens"]["positive"]["passed"] += best_fuzzy["positive"]["passed"]
+                results[domain]["fuzzy_tokens"]["positive"]["failed"] += best_fuzzy["positive"]["failed"]
+                results[domain]["fuzzy_tokens"]["positive_bigram"]["passed"] += best_fuzzy["positive_bigram"]["passed"]
+                results[domain]["fuzzy_tokens"]["positive_bigram"]["failed"] += best_fuzzy["positive_bigram"]["failed"]
+                results[domain]["fuzzy_tokens"]["negative"]["passed"] += best_fuzzy["negative"]["passed"]
+                results[domain]["fuzzy_tokens"]["negative"]["failed"] += best_fuzzy["negative"]["failed"]
+
 
     return results
 
@@ -718,74 +756,71 @@ def main(args):
     num_beams = 6
     
     test_case_groups = create_test_cases_with_tests(args.test_suite_path)
+
+    # HACK: restrict combos for testing
+    test_case_groups = {k: v for k,v in test_case_groups.items() if k == (0,1)}
+
+    print(f"Total test cases: {sum([len(x) for x in test_case_groups.values()])}")
+
+    combined_results = {}
+    combined_baseline_results = {}
+
+    #TODO: add domain field to test cases, update evaluate function to work with fuzzy tests
     for (term_count,fuzzy_count),test_case_group in test_case_groups.items():
-        test_cases = break_down_group(test_case_group)
-        model_types = ["base"] + ["term"]*term_count + ["fuzzy"]*fuzzy_count + ["base"]
-        translations = ensemble.translate(
-            test_cases,
-            model_types,
-            num_beams=num_beams,
-            max_length=100,
-            only_main_model=False
-        )
-
-        eval_results = evaluate_translations(translations,test_case_group)
-
-        # generate baseline translations to see the effect that external info makes
-        baseline_translations = generate_unensembled(
-            test_cases,
-            model_group.models[model_types[0]],
-            model_group.baseline_tokenizer,
-            0)
-
-        baseline_eval_results = evaluate_translations(baseline_translations,test_case_group)
-        
-        print(eval_results)
-        print(baseline_eval_results)
-
-        # If only one model is used, also generate unensembled translations for comparison
-        if len(model_types) == 3:
-            single_model_translations = ensemble.translate(
+        for batch in [test_case_group[i:i + args.batch_size] for i in range(0, len(test_case_group), args.batch_size)]:
+            test_cases = break_down_group(batch)
+            model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
+            translations = ensemble.translate(
                 test_cases,
                 model_types,
                 num_beams=num_beams,
                 max_length=100,
-                only_main_model=False,
-                single_model=True
+                only_main_model=False
             )
 
-            # This generates the single model translations using the standard
-            # generate method instead of the ensemble logit processor. For debugging
-            # to see if there's a difference.
-            single_model_translations_with_generate = generate_unensembled(
+            
+            if (term_count,fuzzy_count) in combined_results:
+                evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
+            else:
+                eval_results = evaluate_translations(translations,batch)
+                combined_results[(term_count,fuzzy_count)] = eval_results
+                
+            # generate baseline translations to see the effect that external info makes
+            baseline_translations = generate_unensembled(
                 test_cases,
-                model_group.models[model_types[1]],
-                model_group.tokenizer)
+                model_group.models[model_types[0]],
+                model_group.baseline_tokenizer,
+                0)
 
-        # Record terms and fuzzies for print debugging
-        terms = []
-        fuzzies = []
+            if (term_count,fuzzy_count) in combined_baseline_results:
+                evaluate_translations(baseline_translations,batch,combined_baseline_results[(term_count,fuzzy_count)])
+            else:
+                eval_results = evaluate_translations(baseline_translations,batch)
+                combined_baseline_results[(term_count,fuzzy_count)] = eval_results
 
-        for i, model_type in enumerate(model_types):
-            if model_type == "term":
-                if not terms:
-                    terms = [x[1] for x in test_cases[i]]
-                else:
-                    terms = list(zip(terms,[x[1] for x in test_cases[i]]))
-            if model_type == "fuzzy":
-                if not fuzzies:
-                    fuzzies = [x[2] for x in test_cases[i]]
-                else:
-                    fuzzies = list(zip(fuzzies,[x[2] for x in test_cases[i]]))
+            # If only one model is used, also generate unensembled translations for comparison
+            """if len(model_types) == 3:
+                single_model_translations = ensemble.translate(
+                    test_cases,
+                    model_types,
+                    num_beams=num_beams,
+                    max_length=100,
+                    only_main_model=False,
+                    single_model=True
+                )
 
-        if not terms:
-            terms = [None] * len(fuzzies)
-        if not fuzzies:
-            fuzzies = [None] * len(terms)
-
-        print("\n".join([f"Fuzzies: {x[0]}, Terms: {x[1]}, Translation: {x[2]}" for x in (zip(fuzzies,terms,translations))]))
-        
+                # This generates the single model translations using the standard
+                # generate method instead of the ensemble logit processor. For debugging
+                # to see if there's a difference.
+                single_model_translations_with_generate = generate_unensembled(
+                    test_cases,
+                    model_group.models[model_types[1]],
+                    model_group.tokenizer)"""
     
+    # TODO: incorporarate LLM, implement unified model, implement max 5-term and max 5-fuzzy models,
+    # figure out a composite score.
+
+    print(combined_results)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate test suite test cases using an ensemble of models accepting different kinds of retrieved information (terms, ngrams, full matches).")
@@ -826,5 +861,12 @@ if __name__ == "__main__":
         help="Path to the test suite."
     )
     
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        required=True,
+        help="Path to the test suite."
+    )
+
     args = parser.parse_args()
     main(args)
