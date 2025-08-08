@@ -3,7 +3,10 @@ import torch.nn.functional as F
 import json
 import argparse
 import re
-from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer
+
+# IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.9 when translating with. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
+from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig, Gemma3ForCausalLM
+
 from itertools import chain, combinations, product
 from collections import defaultdict
 
@@ -737,11 +740,46 @@ def evaluate_translations(translations, test_cases, existing_results=None):
 
     return results
 
+def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
+    messages = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": "You are a helpful assistant."}]
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text", 
+                    "text": '''Käännä lause suomeksi annetulla sanastolla ja fragmenteilla. Käytä käännöksessä esimerkin rakennetta mutta älä kopioi esimerkistä käännökseen osia, joiden merkitystä ei ole lähdelauseessa. Vastaa JSON-muodossa, esim. {{"käännös": "Tämä on käännös"}}.
+                    Sanasto: loan=luotto, rubber-stamped=hyväksyä virallisesti
+                    Esimerkki: Kun sopimus on hyväksytty kahden viikon päästä, jäsenillä on kuusi kuukautta aikaa viimeistellä se.
+                    Lähdelause: Once the loans agreement is rubber-stamped next week, EU member states have six months to draw up plans for defence projects they wish to fund.
+                    '''
+                }
+            ]
+        }
+    ]
+
+    inputs = llm_tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+    ).to(device).to(torch.bfloat16)
+
+    with torch.inference_mode():
+        outputs = llm_model.generate(**inputs, max_new_tokens=64)
+
+    outputs = llm_tokenizer.batch_decode(outputs)
+    print(outputs)
 
 def main(args):
     print("Base model:", args.base_model)
     print("Term model:", args.term_model)
     print("Fuzzy model:", args.fuzzy_model)
+    print("LLM:", args.llm)
     print("Source language:", args.source_lang)
     print("Target language:", args.target_lang)
     
@@ -751,13 +789,29 @@ def main(args):
     # 3. fuzzy model, for fuzzies
     # NOT YET IMPLEMENTED: 4. subsegment model, for subsegments
     
-    model_group = ModelGroup(args.base_model, args.term_model, args.fuzzy_model)
-    ensemble = ShallowFusion(model_group)
-    num_beams = 6
+    if args.base_model and args.term_model and args.fuzzy_model:
+        model_group = ModelGroup(args.base_model, args.term_model, args.fuzzy_model)
+        ensemble = ShallowFusion(model_group)
+        num_beams = 6
+    # If only base model specified, generate only baseline translations.
+    elif args.base_model:
+        model_group = ModelGroup(args.base_model, args.base_model, args.base_model)
+        num_beams = 6
+
+    if args.llm:
+        # initialize llm model
+        model_id = args.llm
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        llm_model = Gemma3ForCausalLM.from_pretrained(
+            model_id, quantization_config=quantization_config
+        ).eval()
+        llm_tokenizer = AutoTokenizer.from_pretrained(model_id)
+
     
     test_case_groups = create_test_cases_with_tests(args.test_suite_path)
 
     # HACK: restrict combos for testing
+    # TODO: make a more meaningful selection of a reasonable amount of cases (5000-10000?)
     test_case_groups = {k: v for k,v in test_case_groups.items() if k == (0,1)}
 
     print(f"Total test cases: {sum([len(x) for x in test_case_groups.values()])}")
@@ -765,38 +819,42 @@ def main(args):
     combined_results = {}
     combined_baseline_results = {}
 
-    #TODO: add domain field to test cases, update evaluate function to work with fuzzy tests
     for (term_count,fuzzy_count),test_case_group in test_case_groups.items():
         for batch in [test_case_group[i:i + args.batch_size] for i in range(0, len(test_case_group), args.batch_size)]:
+
             test_cases = break_down_group(batch)
-            model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
-            translations = ensemble.translate(
-                test_cases,
-                model_types,
-                num_beams=num_beams,
-                max_length=100,
-                only_main_model=False
-            )
+            if args.base_model and args.term_model and args.fuzzy_model:
+                model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
+                translations = ensemble.translate(
+                    test_cases,
+                    model_types,
+                    num_beams=num_beams,
+                    max_length=100,
+                    only_main_model=False
+                )
 
-            
-            if (term_count,fuzzy_count) in combined_results:
-                evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
-            else:
-                eval_results = evaluate_translations(translations,batch)
-                combined_results[(term_count,fuzzy_count)] = eval_results
+                if (term_count,fuzzy_count) in combined_results:
+                    evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
+                else:
+                    eval_results = evaluate_translations(translations,batch)
+                    combined_results[(term_count,fuzzy_count)] = eval_results
                 
-            # generate baseline translations to see the effect that external info makes
-            baseline_translations = generate_unensembled(
-                test_cases,
-                model_group.models[model_types[0]],
-                model_group.baseline_tokenizer,
-                0)
+            if args.base_model and not args.term_model and not args.fuzzy_model:    
+                # generate baseline translations to see the effect that external info makes. This is kind of wasteful, as it ends up translating the same sentence many times, but no time to unravel that now
+                baseline_translations = generate_unensembled(
+                    test_cases,
+                    model_group.models["base"],
+                    model_group.baseline_tokenizer,
+                    0)
 
-            if (term_count,fuzzy_count) in combined_baseline_results:
-                evaluate_translations(baseline_translations,batch,combined_baseline_results[(term_count,fuzzy_count)])
-            else:
-                eval_results = evaluate_translations(baseline_translations,batch)
-                combined_baseline_results[(term_count,fuzzy_count)] = eval_results
+                if (term_count,fuzzy_count) in combined_baseline_results:
+                    evaluate_translations(baseline_translations,batch,combined_baseline_results[(term_count,fuzzy_count)])
+                else:
+                    eval_results = evaluate_translations(baseline_translations,batch)
+                    combined_baseline_results[(term_count,fuzzy_count)] = eval_results
+
+            if args.llm:
+                translate_with_llm(batch,llm_model,llm_tokenizer)
 
             # If only one model is used, also generate unensembled translations for comparison
             """if len(model_types) == 3:
@@ -827,22 +885,28 @@ if __name__ == "__main__":
     
     parser.add_argument(
         "--base_model",
-        required=True,
+        required=False,
         help="Base model to use as contrast model."
     )
 
     parser.add_argument(
         "--term_model",
-        required=True,
+        required=False,
         help="Term model."
     )
 
     parser.add_argument(
         "--fuzzy_model",
-        required=True,
+        required=False,
         help="Fuzzy model."
     )
-        
+
+    parser.add_argument(
+        "--llm",
+        required=False,
+        help="HF name of LLM to generate translations with."
+    )
+
     parser.add_argument(
         "--source_lang",
         required=True,
@@ -865,7 +929,7 @@ if __name__ == "__main__":
         "--batch_size",
         type=int,
         required=True,
-        help="Path to the test suite."
+        help="Batch size when translating."
     )
 
     args = parser.parse_args()
