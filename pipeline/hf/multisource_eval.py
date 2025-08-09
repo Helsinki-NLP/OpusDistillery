@@ -657,6 +657,89 @@ def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
     print("Without ensembling:" + str([tokenizer.decode(t, skip_special_tokens=True) for t in translated]))
     return [tokenizer.decode(t, skip_special_tokens=True) for t in translated]
 
+class EvaluationResult:
+    def __init__(self):
+        self.term_failed = 0
+        self.term_success = 0
+        self.fuzzy_negative_failed = 0
+        self.fuzzy_negative_success = 0
+        self.fuzzy_positive_failed = 0
+        self.fuzzy_positive_success = 0
+        self.fuzzy_bigram_positive_success = 0
+        self.fuzzy_bigram_positive_failed = 0
+
+def evaluate_translations_2(translations, test_cases):
+    """
+    translations: list of translation strings (model outputs)
+    test_cases: list of tuples (source, terms, fuzzies, tests), aligned with translations
+    """
+    assert len(translations) == len(test_cases)
+    
+    results = []
+    
+    for translation, (source, terms, fuzzies, tests, domain) in zip(translations, test_cases):
+        evaluation_result = EvaluationResult()
+        
+        fuzzy_test_results = [] 
+
+        for test in tests:
+            test_type = test["type"]
+            
+            if test_type == "term_present":
+                source_term = test.get("source_term")
+                condition = test.get("condition")
+                pattern = re.compile(condition)
+                target_term = test.get("target")
+
+                if pattern.search(translation):
+                    evaluation_result.term_success += 1
+                else:
+                    evaluation_result.term_failed += 1
+
+            if test.get("type") == "fuzzy_tokens":
+                condition = test.get("condition")
+                positive_tokens = condition["positive_tokens"]
+                negative_tokens = condition["negative_tokens"]
+                fuzzy_result = EvaluationResult()
+
+                # also track bigrams to reward correct order            
+                bigrams = []
+                for i in range(len(positive_tokens) - 1):
+                    bigram = positive_tokens[i].lower() + " " + positive_tokens[i+1].lower()
+                    if bigram in test["target"].lower():
+                        bigrams.append(bigram)
+
+                for pos_token in positive_tokens:
+                    if pos_token.lower() in translation.lower():
+                        fuzzy_result.fuzzy_positive_success += 1
+                    else:
+                        fuzzy_result.fuzzy_positive_failed += 1
+                
+                for pos_bigram in bigrams:
+                    if pos_bigram in translation.lower():
+                        fuzzy_result.fuzzy_bigram_positive_success += 1
+                    else:
+                        fuzzy_result.fuzzy_bigram_positive_failed += 1
+
+                for neg_token in negative_tokens:
+                    if neg_token.lower() in translation.lower():
+                        fuzzy_result.fuzzy_negative_failed += 1
+                    else:
+                        fuzzy_result.fuzzy_negative_success += 1
+                fuzzy_test_results.append(fuzzy_result)
+                
+            # add the best fuzzy results
+            if fuzzy_test_results:
+                best_fuzzy = max(fuzzy_test_results,key=lambda x: 
+                                x.fuzzy_positive_success+x.fuzzy_negative_success+x.fuzzy_bigram_positive_success-x.fuzzy_positive_failed-x.fuzzy_negative_failed-x.fuzzy_bigram_positive_failed)
+                evaluation_result.fuzzy_positive_success = best_fuzzy.fuzzy_positive_success
+                evaluation_result.fuzzy_positive_failed = best_fuzzy.fuzzy_positive_failed
+                evaluation_result.fuzzy_negative_success = best_fuzzy.fuzzy_negative_success
+                evaluation_result.fuzzy_negative_failed = best_fuzzy.fuzzy_negative_failed
+                evaluation_result.fuzzy_bigram_positive_success = best_fuzzy.fuzzy_bigram_positive_success
+                evaluation_result.fuzzy_bigram_positive_failed = best_fuzzy.fuzzy_bigram_positive_failed
+
+    return results
 
 def evaluate_translations(translations, test_cases, existing_results=None):
     """
@@ -676,8 +759,7 @@ def evaluate_translations(translations, test_cases, existing_results=None):
     for translation, (source, terms, fuzzies, tests, domain) in zip(translations, test_cases):
 
         # TODO: This should return the results per sentence, so that they can be put into a csv
-        # for fuzzies, collect results separately for all
-        # fuzzies and only use the best scoring
+        # for fuzzies, collect results separately for all fuzzies and only use the best scoring
         fuzzy_test_results = [] 
 
         for test in tests:
@@ -818,9 +900,9 @@ def main(args):
     if args.llm:
         # initialize llm model
         model_id = args.llm
-        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        #quantization_config = BitsAndBytesConfig(load_in_8bit=True)
         llm_model = Gemma3ForCausalLM.from_pretrained(
-            model_id, quantization_config=quantization_config
+            model_id, device_map="cuda",torch_dtype=torch.bfloat16 #, quantization_config=quantization_config
         ).eval()
         llm_tokenizer = AutoTokenizer.from_pretrained(model_id)
 

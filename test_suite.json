@@ -819,11 +819,11 @@
                 ],
                 "immune system": [
                     {
-                        "target": "immuunijarjestelma",
+                        "target": "immuunij\u00e4rjestelma",
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Ii]mmuunijarjestelm[^ ]*?\\b"
+                                "condition": "\\b[Ii]mmuunij\u00e4rjestelm[^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -28935,7 +28935,7 @@
                         "selected": true
                     },
                     {
-                        "target": "jarjestelm\u00e4n skannaus",
+                        "target": "j\u00e4rjestelm\u00e4n skannaus",
                         "tests": [
                             {
                                 "type": "term_present",
