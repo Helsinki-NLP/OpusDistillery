@@ -6,7 +6,7 @@ import re
 import csv
 
 # IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.9 when translating with. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
-from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig, Gemma3ForCausalLM
+from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig
 
 from itertools import chain, combinations, product
 from collections import defaultdict
@@ -668,6 +668,18 @@ class EvaluationResult:
         self.fuzzy_bigram_positive_success = 0
         self.fuzzy_bigram_positive_failed = 0
 
+    def get_as_tuple(self):
+        return (
+            self.term_failed,
+            self.term_success,
+            self.fuzzy_positive_success,
+            self.fuzzy_positive_failed,
+            self.fuzzy_negative_success,
+            self.fuzzy_negative_failed,
+            self.fuzzy_bigram_positive_success,
+            self.fuzzy_bigram_positive_failed
+        )
+
 def evaluate_translations_2(translations, test_cases):
     """
     translations: list of translation strings (model outputs)
@@ -738,6 +750,7 @@ def evaluate_translations_2(translations, test_cases):
                 evaluation_result.fuzzy_negative_failed = best_fuzzy.fuzzy_negative_failed
                 evaluation_result.fuzzy_bigram_positive_success = best_fuzzy.fuzzy_bigram_positive_success
                 evaluation_result.fuzzy_bigram_positive_failed = best_fuzzy.fuzzy_bigram_positive_failed
+        results.append(evaluation_result)
 
     return results
 
@@ -898,6 +911,7 @@ def main(args):
         num_beams = 6
 
     if args.llm:
+        from transformers import Gemma3ForCausalLM
         # initialize llm model
         model_id = args.llm
         #quantization_config = BitsAndBytesConfig(load_in_8bit=True)
@@ -951,14 +965,12 @@ def main(args):
                     model_group.baseline_tokenizer,
                     0)
 
-                if (term_count,fuzzy_count) in combined_baseline_results:
-                    evaluate_translations(baseline_translations,batch,combined_baseline_results[(term_count,fuzzy_count)])
-                else:
-                    eval_results = evaluate_translations(baseline_translations,batch)
-                    combined_baseline_results[(term_count,fuzzy_count)] = eval_results
+                eval_results = evaluate_translations_2(baseline_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,baseline_translations,eval_results)]
 
             if args.llm:
                 translations = translate_with_llm(batch,llm_model,llm_tokenizer)
+                eval_results = evaluate_translations_2(translations,batch)
                 if (term_count,fuzzy_count) in combined_results:
                     evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
                 else:
@@ -989,13 +1001,21 @@ def main(args):
     # TODO: incorporarate LLM, implement unified model, implement max 5-term and max 5-fuzzy models,
     # figure out a composite score.
 
-    print(combined_results)
     with open("output.csv", mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file, delimiter='\t')
 
-        writer.writerow(["TermFuzzyCounts","Source","Terms","Fuzzies","Tests","Domain","Translation"])
+        writer.writerow(["TermCount","FuzzyCount","Source","Terms","Fuzzies","Tests","Domain","Translation","term_failed","term_success","fuzzy_positive_success","fuzzy_positive_failed","fuzzy_negative_success","fuzzy_negative_failed","fuzzy_bigram_positive_success","fuzzy_bigram_positive_failed"])
         for sentence_data in test_cases_with_translations:
             writer.writerow(sentence_data)
+
+    print(f"Term failed: {sum([x[8] for x in test_cases_with_translations])}")
+    print(f"Term success: {sum([x[9] for x in test_cases_with_translations])}")
+    print(f"Fuzzy pos success: {sum([x[10] for x in test_cases_with_translations])}")
+    print(f"Fuzzy pos failed: {sum([x[11] for x in test_cases_with_translations])}")
+    print(f"Fuzzy neg success: {sum([x[12] for x in test_cases_with_translations])}")
+    print(f"Fuzzy neg failed: {sum([x[13] for x in test_cases_with_translations])}")
+    print(f"Fuzzy bigram success: {sum([x[14] for x in test_cases_with_translations])}")
+    print(f"Fuzzy bigram failed: {sum([x[15] for x in test_cases_with_translations])}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate test suite test cases using an ensemble of models accepting different kinds of retrieved information (terms, ngrams, full matches).")
