@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import json
 import argparse
 import re
+import csv
 
 # IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.9 when translating with. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
 from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig, Gemma3ForCausalLM
@@ -674,6 +675,7 @@ def evaluate_translations(translations, test_cases, existing_results=None):
 
     for translation, (source, terms, fuzzies, tests, domain) in zip(translations, test_cases):
 
+        # TODO: This should return the results per sentence, so that they can be put into a csv
         # for fuzzies, collect results separately for all
         # fuzzies and only use the best scoring
         fuzzy_test_results = [] 
@@ -741,39 +743,54 @@ def evaluate_translations(translations, test_cases, existing_results=None):
     return results
 
 def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
-    messages = [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": "You are a helpful assistant."}]
-        },
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text", 
-                    "text": '''Käännä lause suomeksi annetulla sanastolla ja fragmenteilla. Käytä käännöksessä esimerkin rakennetta mutta älä kopioi esimerkistä käännökseen osia, joiden merkitystä ei ole lähdelauseessa. Vastaa JSON-muodossa, esim. {{"käännös": "Tämä on käännös"}}.
-                    Sanasto: loan=luotto, rubber-stamped=hyväksyä virallisesti
-                    Esimerkki: Kun sopimus on hyväksytty kahden viikon päästä, jäsenillä on kuusi kuukautta aikaa viimeistellä se.
-                    Lähdelause: Once the loans agreement is rubber-stamped next week, EU member states have six months to draw up plans for defence projects they wish to fund.
-                    '''
-                }
-            ]
-        }
-    ]
 
-    inputs = llm_tokenizer.apply_chat_template(
-        messages,
-        add_generation_prompt=True,
-        tokenize=True,
-        return_dict=True,
-        return_tensors="pt",
-    ).to(device).to(torch.bfloat16)
+    templated_prompts = []
+    for source, terms, fuzzies, _, _ in batch:
+        term_string = "Terms: "
+        for term in terms:
+            term_string += f"{term[0]}={term[1]}, "
+        # remove last comma, add linebreak
+        term_string = term_string[0:-1]+"\n"
+
+        fuzzy_string = ""
+        for index,fuzzy in enumerate(fuzzies):
+            fuzzy_string += f"Fuzzy match {index+1}: {fuzzy}\n"
+        
+        messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": "You are a translator translating from English to Finnish."}]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text", 
+                        "text": '''Translate the sentence below to Finnish using the specified terms and fuzzy matches. Use the structure of the fuzzy matches in the translation if appropriate, but do not copy parts of the fuzzy match to the translation if they are not semantically present in the source sentence. Using the specified term is more important than using the fuzzy match, so if a term and the fuzzy match conflict, always prefer the term. Output the answer in the following format, and do not output anything else: TRANSLATION: TRANSLATION GOES HERE.
+                        {terms}{fuzzies}.
+                        Source sentence to translate: {source}
+                        '''.format(terms=term_string,fuzzies=fuzzy_string,source=source)
+                    }
+                ]
+            }
+        ]
+
+        templated_prompt = llm_tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False
+        )
+        templated_prompts.append(templated_prompt)
+
+    inputs = llm_tokenizer(templated_prompts,padding=True,return_tensors="pt").to(device).to(torch.bfloat16)
 
     with torch.inference_mode():
-        outputs = llm_model.generate(**inputs, max_new_tokens=64)
+        outputs = llm_model.generate(**inputs, max_new_tokens=128)
 
     outputs = llm_tokenizer.batch_decode(outputs)
-    print(outputs)
+    only_translations = [x.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip() for x in outputs]
+    
+    return only_translations
 
 def main(args):
     print("Base model:", args.base_model)
@@ -810,9 +827,14 @@ def main(args):
     
     test_case_groups = create_test_cases_with_tests(args.test_suite_path)
 
+    
+
     # HACK: restrict combos for testing
     # TODO: make a more meaningful selection of a reasonable amount of cases (5000-10000?)
-    test_case_groups = {k: v for k,v in test_case_groups.items() if k == (0,1)}
+    test_case_groups = {k: v for k,v in test_case_groups.items() if k == (1,1)}
+    test_case_groups[(1,1)] = test_case_groups[(1,1)][0:100]
+
+    test_cases_with_translations = []
 
     print(f"Total test cases: {sum([len(x) for x in test_case_groups.values()])}")
 
@@ -854,7 +876,14 @@ def main(args):
                     combined_baseline_results[(term_count,fuzzy_count)] = eval_results
 
             if args.llm:
-                translate_with_llm(batch,llm_model,llm_tokenizer)
+                translations = translate_with_llm(batch,llm_model,llm_tokenizer)
+                if (term_count,fuzzy_count) in combined_results:
+                    evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
+                else:
+                    eval_results = evaluate_translations(translations,batch)
+                    combined_results[(term_count,fuzzy_count)] = eval_results
+
+                test_cases_with_translations += [(*x[0],x[1]) for x in zip(batch,translations)]
 
             # If only one model is used, also generate unensembled translations for comparison
             """if len(model_types) == 3:
@@ -879,6 +908,12 @@ def main(args):
     # figure out a composite score.
 
     print(combined_results)
+    with open("output.csv", mode='w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file, delimiter='\t')
+
+        writer.writerow(["TermFuzzyCounts","Source","Terms","Fuzzies","Tests","Domain","Translation"])
+        for sentence_data in test_cases_with_translations:
+            writer.writerow(sentence_data)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate test suite test cases using an ensemble of models accepting different kinds of retrieved information (terms, ngrams, full matches).")
