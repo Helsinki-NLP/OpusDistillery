@@ -53,7 +53,11 @@ else
     # This is used in case of RAT models, where target side translation are prefixed to the source sentence.
     # Those target language sentences need to be segmented with the target sp model in the case of OPUS-MT models, since
     # even though OPUS-MT models share the vocab, the sp models are different.
-    python ./segment_rat.py --input "${corpus_src}" --output "${model_dir}/train.sp.${src}.gz" --model1 "${source_spm_path}" --model2 "${target_spm_path}"
+    if [[ "$corpus_src" == *append_terms* ]]; then
+        python ./segment_rat.py --input "${corpus_src}" --output "${model_dir}/train.sp.${src}.gz" --model1 "${source_spm_path}" --model2 "${target_spm_path}" --terms_appended
+    else
+        python ./segment_rat.py --input "${corpus_src}" --output "${model_dir}/train.sp.${src}.gz" --model1 "${source_spm_path}" --model2 "${target_spm_path}" --terms_appended
+    fi
     
     #TODO: add form of RAT where source-sides of fuzzies are on the source side, and target sides on the target side. This would simplify processing, as both sides can be segmented with just their own sp model
     #pigz -dc "${corpus_src}" | "${MARIAN}/spm_encode" --model "${source_spm_path}" | pigz >"${model_dir}/train.sp.${src}.gz"
