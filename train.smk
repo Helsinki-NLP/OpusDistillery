@@ -19,7 +19,7 @@ rule convert_marian_to_hf:
     input:
         marian_model=f'{{preprocessing}}/final.model.npz.best-{config["best-model-metric"]}.npz'
     output:
-        hf_model="{preprocessing}/convert_to_hf/model.safetensors"
+        hf_model="{preprocessing}/convert_to_hf/pytorch_model.bin" # In latest HF versions that produce safetensors models, conversion corrupts Marian models, so use older HF that produces pytorch_model.bin (e.g. 4.28.0)
     params:
         model_name=f'final.model.npz.best-{config["best-model-metric"]}.npz'
     shell: '''python pipeline/hf/convert_marian_to_pytorch.py --src {wildcards.preprocessing} --dest {wildcards.preprocessing}/convert_to_hf --model_name {params.model_name}'''

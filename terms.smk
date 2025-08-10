@@ -9,6 +9,10 @@ localrules: split_corpus_for_annotation, collect_term_annotations, copy_valid_se
 wildcard_constraints:
     src="\w{2,3}",
     trg="\w{2,3}",
+    max_terms_per_sent="\d+",
+    term_ratio="\d+",
+    sents_per_term_sent="\d+"
+    
 
 def find_annotation_parts(wildcards, checkpoint):
     checkpoint_output = checkpoint.get(**wildcards).output[0]
@@ -54,21 +58,21 @@ rule opusmt_term_alignments:
 
 rule annotate_terms: 
     message: "Annotating corpus with term information"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotate_{part}.log"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotate_{part}.log"
     conda: None
     container: None
     threads: 16
     #resources: gpu=1
     input:
-        alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/file.aln.{part}.gz",
-        train_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/file.src.{part}.gz",
-        train_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/file.trg.{part}.gz",
+        alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/file.aln.{part}.gz",
+        train_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/file.src.{part}.gz",
+        train_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/file.trg.{part}.gz",
         src_vocab='{datadir}/models/{src}-{trg}/{model_name}/source.spm',
         trg_vocab='{datadir}/models/{src}-{trg}/{model_name}/target.spm',
     output:
-        annotated_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.src.{part}.gz",
-        annotated_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.trg.{part}.gz",
-        annotated_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.aln.{part}.gz"
+        annotated_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.src.{part}.gz",
+        annotated_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.trg.{part}.gz",
+        annotated_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model_name}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.aln.{part}.gz"
     params:
         # Stanza wants two letter codes
         src=lambda wildcards: Language.get(wildcards.src).to_tag(),
@@ -79,7 +83,7 @@ rule annotate_terms:
                 --mask_tag augmentsymbol3 --source_lang "{params.src}" --target_lang "{params.trg}" \
                 --source_corpus "{input.train_src}" --target_corpus "{input.train_trg}" \
                 --alignment_file "{input.alignments}" --terms_per_sent_ratio {wildcards.term_ratio} \
-                --sents_per_term_sent {wildcards.sents_per_term_sent}  \
+                --sents_per_term_sent {wildcards.sents_per_term_sent} --max_terms_per_sent {wildcards.max_terms_per_sent} \
                 --source_output_path "{output.annotated_src}" --target_output_path "{output.annotated_trg}" \
                 --sp_input --sp_output \
                 --alignment_output_path "{output.annotated_alignments}" \
@@ -87,7 +91,7 @@ rule annotate_terms:
 
 checkpoint split_corpus_for_annotation:
     message: "Splitting the corpus for term annotation"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split.log"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split.log"
     conda: None
     container: None
     threads: 1
@@ -95,30 +99,30 @@ checkpoint split_corpus_for_annotation:
         train_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.spm.{src}.gz",
         train_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.spm.{trg}.gz",
         alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/train.aln.gz"
-    output: directory("{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split")
+    output: directory("{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split")
     shell: '''pipeline/opusmt/split-corpus-and-aln.sh \
                 {input.train_src} {input.train_trg} {input.alignments} {output} 1000000 >> {log} 2>&1'''
 
 rule collect_term_annotations:
     message: "Collecting term-annotated data"
-    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/split.log"
+    log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/split.log"
     conda: "envs/base.yml"
     threads: 4
     input:
-        src=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/split/annotated.src.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
-        trg=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/split/annotated.trg.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
-        alignments=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}/split/annotated.aln.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation))
+        src=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}-{{max_terms_per_sent}}/split/annotated.src.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
+        trg=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}-{{max_terms_per_sent}}/split/annotated.trg.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation)),
+        alignments=lambda wildcards: expand("{{datadir}}/{{project_name}}/{{src}}-{{trg}}/{{preprocessing}}/annotate_terms_{{scheme}}-{{term_ratio}}-{{sents_per_term_sent}}-{{max_terms_per_sent}}/split/annotated.aln.{part}.gz", part=find_annotation_parts(wildcards, checkpoints.split_corpus_for_annotation))
     output:
-        annotated_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train.{src}.gz",
-        annotated_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train.{trg}.gz",
-        annotated_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train.aln.gz",
-        annotated_omit_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train-omit.{src}.gz",
-        annotated_omit_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train-omit.{trg}.gz",
-        annotated_omit_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/train-omit.aln.gz"
+        annotated_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train.{src}.gz",
+        annotated_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train.{trg}.gz",
+        annotated_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train.aln.gz",
+        annotated_omit_src="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train-omit.{src}.gz",
+        annotated_omit_trg="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train-omit.{trg}.gz",
+        annotated_omit_alignments="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train-omit.aln.gz"
     params:
-        src_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.src",
-        trg_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.trg",
-        aln_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}/split/annotated.aln"
+        src_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.src",
+        trg_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.trg",
+        aln_prefix="{datadir}/{project_name}/{src}-{trg}/{preprocessing}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/split/annotated.aln"
 
     shell: '''bash pipeline/wmt23_termtask/collect.sh "{params.src_prefix}" "{params.trg_prefix}" "{params.aln_prefix}" \
             "{output.annotated_src}" "{output.annotated_trg}" "{output.annotated_alignments}" \

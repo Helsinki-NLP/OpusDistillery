@@ -1,7 +1,7 @@
 # set common variables based on config values
 fuzzy_match_cli=f'{config["fuzzy-match-cli"]}'
 
-localrules: augment_data_with_fuzzies, augment_data_with_reverse_fuzzies, augment_data_with_mixed_fuzzies, augment_data_with_domain_fuzzies, combine_targetsim_and_sourcesim
+localrules: augment_data_with_fuzzies, augment_data_with_reverse_fuzzies, augment_data_with_mixed_fuzzies, augment_data_with_domain_fuzzies, combine_targetsim_and_sourcesim, append_terms
 
 wildcard_constraints:
     src="\w{2,3}",
@@ -168,6 +168,7 @@ use rule augment_data_with_fuzzies as augment_data_with_reverse_fuzzies with:
         source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_targetsim_{index_type}/{set}.{src}.gz",
         target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_targetsim_{index_type}/{set}.{trg}.gz"
 
+# TODO: update mixed fuzzies to new dir structure
 use rule augment_data_with_fuzzies as augment_data_with_mixed_fuzzies with:
     log: "{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/augment_mixedsim_{index_type}-{set}_matches.log"
     input:
@@ -184,19 +185,36 @@ use rule augment_data_with_fuzzies as augment_data_with_mixed_fuzzies with:
         extra_args=lambda wildcards: "--lines_to_augment 2000 --exclude_non_augmented" if wildcards.set == "cleandev" else "",
         fuzzy_max_score=lambda wildcards: "1" if wildcards.fuzzy_max_score == "" else wildcards.fuzzy_max_score.replace("-",""),
         mix_matches="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/targetsim_{index_type}-{set}.{trg}-{src}.matches.gz"
-
         
 rule combine_targetsim_and_sourcesim:
+    wildcard_constraints:
+        set="(train|dev)"
     log: "{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/augment_combosim{combofactor}_{index_type}-{set}_matches.log"
     input:
-        sourcesim_src="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/{index_type}-{set}.{src}.gz",
-        sourcesim_trg="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/{index_type}-{set}.{trg}.gz",
-        targetsim_src="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/targetsim_{index_type}-{set}.{src}.gz",
-        targetsim_trg="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/targetsim_{index_type}-{set}.{trg}.gz"
+        sourcesim_src="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_{index_type}/{set}.{src}.gz",
+        sourcesim_trg="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_{index_type}/{set}.{trg}.gz",
+        targetsim_src="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_targetsim_{index_type}/{set}.{src}.gz",
+        targetsim_trg="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_targetsim_{index_type}/{set}.{trg}.gz"
     output: 
-        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/combosim{combofactor}_{index_type}-{set}.{src}.gz",
-        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/combosim{combofactor}_{index_type}-{set}.{trg}.gz",
-        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_combosim{combofactor}_{index_type}-{set}.{src}.gz",
-        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}/nobands_combosim{combofactor}_{index_type}-{set}.{trg}.gz"
+        source="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_combosim{combofactor}_{index_type}/{set}.{src}.gz",
+        target="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_combosim{combofactor}_{index_type}/{set}.{trg}.gz",
+        source_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_combosim{combofactor}_{index_type}/{set}.{src}.gz",
+        target_nobands="{project_name}/{src}-{trg}/{tc_processing}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}_nobands_combosim{combofactor}_{index_type}/{set}.{trg}.gz"
     shell:
-        '''python pipeline/rat/combosim.py --combination_factor {wildcards.combofactor} --source {input.sourcesim_src} --source_targetsim {input.targetsim_src} --target {input.sourcesim_trg} --target_targetsim {input.targetsim_trg} >> {log} 2>&1'''
+        '''python pipeline/rat/combosim.py --combination_factor {wildcards.combofactor} --source {input.sourcesim_src} --source_targetsim {input.targetsim_src} --target {input.sourcesim_trg} --target_targetsim {input.targetsim_trg} --source_output {output.source} --target_output {output.target} --source_nobands_output {output.source_nobands} --target_nobands_output {output.target_nobands} >> {log} 2>&1'''
+
+# in addition to the rat augmentation data, add term augmentations for producing a unified model that can process both terms and fuzzies
+rule append_terms:
+    log: "{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/append_terms_{model}_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/{set}_append_terms.log"
+    input:
+        rat_src="{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/{set}.{src}.gz",
+        rat_trg="{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/{set}.{trg}.gz",
+        term_src="{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train.{src}.gz",
+        term_trg="{project_name}/{src}-{trg}/{preprocessing}/terms_align_and_sp_{model}/annotate_terms_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/train.{trg}.gz"
+    output:
+        source="{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/append_terms_{model}_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/{set}.{src}.gz",
+        target="{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/append_terms_{model}_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/{set}.{trg}.gz"
+    params:
+        combosim_doubled=lambda wildcards: "--combosim_doubled" if "combosim1" in wildcards.rest_of_augment_step else ""
+    shell:
+        '''python pipeline/rat/combine_fuzzies_and_terms.py --fuzzy_src_corpus {input.rat_src} --term_src_corpus {input.term_src} --output_src_corpus {output.source} {params.combosim_doubled} && cp {input.rat_trg} {output.target} >> {log} 2>&1'''
