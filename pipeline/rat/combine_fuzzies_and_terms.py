@@ -19,6 +19,8 @@ def process_files(fuzzy_file_path, term_file_path, output_file_path, combosim_do
             # remember to restore the augmentsymbol index which is the first char of the second part after the split
             if len(line1_split) > 1:
                 prefix = line1_split[0] + "augmentsymbol" + line1_split[1][0]
+            else:
+                prefix = ""
             
             # replace augmentsymbol1 (used with nobands models) with augmentsymbol3, since 1 is used in the term annotations for a different purpose
             prefix = prefix.replace("augmentsymbol1","augmentsymbol3")
