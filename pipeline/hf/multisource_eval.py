@@ -47,7 +47,8 @@ def augment_tokenize_batched(
         fuzzy_list, 
         tokenizer, 
         padding_side, 
-        device="cuda"):
+        device="cuda",
+        fuzzy_symbol="augmentsymbol1"):
     """
     Process batched input of texts and terms for augmentation.
     
@@ -98,7 +99,7 @@ def augment_tokenize_batched(
                 # Tokenize fuzzy with target vocab, removing EOS
                 fuzzy_tokenized = tokenizer(text_target=fuzzy).input_ids[:-1]
                 # Add augmentsymbol
-                fuzzy_tokenized.append(vocab["augmentsymbol1"])
+                fuzzy_tokenized.append(vocab[fuzzy_symbol])
                 text_tokenized = fuzzy_tokenized + text_tokenized
 
         all_input_ids.append(text_tokenized)
@@ -145,7 +146,9 @@ def sum_ignore_inf(tensor):
 def combine_with_guide_softmax(
     softmax_tensor: torch.Tensor,
     tokenizer,
-    emphasis_strength: float = 10000.0
+    ensemble_emphasis_strength: float = 100.0,
+    guide_emphasis=0,
+    baseline_weight=0
 ) -> torch.Tensor:
     """
     Combines model softmaxes using the last model as a guide.
@@ -154,7 +157,9 @@ def combine_with_guide_softmax(
     Args:
         softmax_tensor: Tensor of shape (num_models, num_positions, num_symbols).
         tokenizer: Tokenizer object with a `decode()` method.
-        emphasis_strength: Controls how strongly differences from the guide affect weighting.
+        ensemble_emphasis_strength: Controls how strongly differences from the guide affect when multiple models are ensembled.
+        guide_emphasis: How much to emphasize individual model differences from guide
+        baseline_weight: How much the guide model contributes itself to the ensemble
 
     Returns:
         Combined softmax tensor of shape (num_positions, num_symbols).
@@ -162,26 +167,47 @@ def combine_with_guide_softmax(
     guide = softmax_tensor[-1]  # Shape: (num_positions, num_symbols)
     others = softmax_tensor[:-1]  # Shape: (num_models - 1, num_positions, num_symbols)
 
-    # Compute absolute difference from guide
-    diff = torch.abs(others - guide.unsqueeze(0))  # Shape: (num_models - 1, num_positions, num_symbols)
+    if guide_emphasis != 0:
+        # Compute signed differences for all others at once
+        diff = others - guide.unsqueeze(0)          # broadcast over num_models-1
 
-    # Higher difference => higher emphasis
-    weights = F.softmax(emphasis_strength * diff, dim=0)  # (num_models - 1, num_positions, num_symbols)
+        # Signed weighting
+        weights = torch.exp(guide_emphasis * diff)  # positive diff → >1, negative diff → <1
 
-    # Weighted sum over other models
-    combined = torch.sum(weights * others, dim=0)  # (num_positions, num_symbols)
+        # Apply weights and re-normalize
+        weighted = others * weights
+        emphasized = weighted / weighted.sum(dim=-1, keepdim=True)
 
+    if ensemble_emphasis_strength != 0 and len(others) > 1:
+        # Compute absolute difference from guide
+        diff = torch.abs(others - guide.unsqueeze(0))  # Shape: (num_models - 1, num_positions, num_symbols)
+
+        # Higher difference => higher emphasis
+        # TODO: Why are weight 0.5?
+        weights = F.softmax(ensemble_emphasis_strength * diff, dim=0)  # (num_models - 1, num_positions, num_symbols)
+
+    if guide_emphasis != 0:
+        if ensemble_emphasis_strength != 0:
+            combined = torch.sum(weights * emphasized, dim=0)  # (num_positions, num_symbols)
+        else:
+            if len(others) > 1:
+                combined = torch.sum(emphasized, dim=0)
+            else:
+                combined = emphasized[0]
+    elif ensemble_emphasis_strength != 0 and len(others) > 1:
+        combined = torch.sum(weights * others, dim=0)  # (num_positions, num_symbols)
+    else:
+        combined = others[0]
     # Optionally include the guide in the final combination
     # For example: combine 90% weighted other models + 10% guide
-    combined = 0.9 * combined + 0.1 * guide
+    if baseline_weight != 0:
+        combined = (1-baseline_weight) * combined + baseline_weight * guide
 
     # Normalize to ensure valid softmax (numerical safety)
     combined = combined / combined.sum(dim=-1, keepdim=True)
     
     return combined
     
-import torch.nn.functional as F
-
 def weighted_softmax_combine(softmax_tensor: torch.Tensor, tokenizer, temperature: float = 1.0) -> torch.Tensor:
     """
     Emphasizes symbols that have significantly higher probabilities in one model compared to others.
@@ -238,7 +264,10 @@ class MultiInputLogitsProcessor(LogitsProcessor):
             tokenizer, 
             only_main_model=False, 
             num_beams=1, 
-            single_model=False):
+            single_model=False,
+            ensemble_emphasis_strength: float = 100.0,
+            guide_emphasis=0,
+            baseline_weight=0):
         self.models = models
         self.model_types = model_types
         self.tokenizer = tokenizer
@@ -246,6 +275,9 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         self.num_beams = num_beams
         self.device = models["base"].device
         self.single_model = single_model
+        self.ensemble_emphasis_strength = ensemble_emphasis_strength
+        self.guide_emphasis = guide_emphasis
+        self.baseline_weight = baseline_weight
 
     def viking_template(self, sentence):
         return f"<|im_start|>user\nTranslate into Finnish: {sentence}<|im_end|>\n<|im_start|>assistant\n"
@@ -372,7 +404,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         #mean_log_probs = torch.log(all_probs.mean(dim=0))
         
         #mean_log_probs = torch.log(weighted_softmax_combine(all_probs, self.tokenizer))
-        mean_log_probs = torch.log(combine_with_guide_softmax(all_probs, self.tokenizer))
+        mean_log_probs = torch.log(combine_with_guide_softmax(all_probs, self.tokenizer,self.ensemble_emphasis_strength,self.guide_emphasis,self.baseline_weight))
         
         return mean_log_probs
         #return torch.logsumexp(all_probs, dim=0) - torch.log(torch.tensor(len(self.models), device=scores.device))
@@ -432,7 +464,10 @@ class ShallowFusion:
             num_beams=4, 
             max_length=50, 
             only_main_model=False,
-            single_model=False):
+            single_model=False,
+            ensemble_emphasis_strength=100,
+            guide_emphasis=0,
+            baseline_weight=0):
         # Initialize logits processor
         logits_processor = MultiInputLogitsProcessor(
             models=self.models,
@@ -440,7 +475,10 @@ class ShallowFusion:
             tokenizer=self.tokenizer,
             only_main_model=only_main_model,
             num_beams=num_beams,
-            single_model=single_model)
+            single_model=single_model,
+            ensemble_emphasis_strength=ensemble_emphasis_strength,
+            guide_emphasis=guide_emphasis,
+            baseline_weight=baseline_weight)
         
         # Prepare all model inputs
         # TODO: this does not seem to be set up for batching yet (do we need batching for this experiment)
@@ -647,7 +685,8 @@ def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
             fuzzies,
             tokenizer, 
             "right",
-            model.device
+            model.device,
+            fuzzy_symbol="augmentsymbol3" # for unified models, fuzzies use this symbol, as the default overlaps with term symbols
         )
     else:
         inputs = tokenizer(src_sentences, return_tensors="pt", padding=True).to(model.device)
@@ -680,7 +719,7 @@ class EvaluationResult:
             self.fuzzy_bigram_positive_failed
         )
 
-def evaluate_translations_2(translations, test_cases):
+def evaluate_translations(translations, test_cases):
     """
     translations: list of translation strings (model outputs)
     test_cases: list of tuples (source, terms, fuzzies, tests), aligned with translations
@@ -754,88 +793,6 @@ def evaluate_translations_2(translations, test_cases):
 
     return results
 
-def evaluate_translations(translations, test_cases, existing_results=None):
-    """
-    translations: list of translation strings (model outputs)
-    test_cases: list of tuples (source, terms, fuzzies, tests), aligned with translations
-    """
-    assert len(translations) == len(test_cases)
-    
-    if not existing_results:
-        results = {}
-        for domain in ["medical","pharmaceutical","public administration","EU texts","IT administration", "IT customer support", "electronics","legal"]:
-            results[domain] = {"term_present": {"passed":0,"failed":0}, "fuzzy_tokens": {"negative": {"passed":0,"failed":0},"positive": {"passed":0,"failed":0},"positive_bigram": {"passed":0,"failed":0}}}
-
-    else:
-        results = existing_results
-
-    for translation, (source, terms, fuzzies, tests, domain) in zip(translations, test_cases):
-
-        # TODO: This should return the results per sentence, so that they can be put into a csv
-        # for fuzzies, collect results separately for all fuzzies and only use the best scoring
-        fuzzy_test_results = [] 
-
-        for test in tests:
-            test_type = test["type"]
-            
-            if test_type == "term_present":
-                source_term = test.get("source_term")
-                condition = test.get("condition")
-                pattern = re.compile(condition)
-                target_term = test.get("target")
-
-                if pattern.search(translation):
-                    results[domain][test_type]["passed"] += 1
-                else:
-                    results[domain][test_type]["failed"] += 1
-
-            if test.get("type") == "fuzzy_tokens":
-                condition = test.get("condition")
-                positive_tokens = condition["positive_tokens"]
-                negative_tokens = condition["negative_tokens"]
-                fuzzy_result = {"negative": {"passed":0,"failed":0},"positive": {"passed":0,"failed":0},"positive_bigram": {"passed":0,"failed":0}}
-
-                #TODO: figure out how to compensate for terms in the bigram reward (terms override fuzzies).
-
-                # also track bigrams to reward correct order            
-                bigrams = []
-                for i in range(len(positive_tokens) - 1):
-                    bigram = positive_tokens[i].lower() + " " + positive_tokens[i+1].lower()
-                    if bigram in test["target"].lower():
-                        bigrams.append(bigram)
-
-                for pos_token in positive_tokens:
-                    if pos_token.lower() in translation.lower():
-                        fuzzy_result["positive"]["passed"] += 1
-                    else:
-                        fuzzy_result["positive"]["failed"] += 1
-                
-                for pos_bigram in bigrams:
-                    if pos_bigram in translation.lower():
-                        fuzzy_result["positive_bigram"]["passed"] += 1
-                    else:
-                        fuzzy_result["positive_bigram"]["failed"] += 1
-
-                for neg_token in negative_tokens:
-                    if neg_token.lower() in translation.lower():
-                        fuzzy_result["negative"]["failed"] += 1
-                    else:
-                        fuzzy_result["negative"]["passed"] += 1
-                fuzzy_test_results.append(fuzzy_result)
-                
-            # add the best fuzzy results
-            if fuzzy_test_results:
-                best_fuzzy = max(fuzzy_test_results,key=lambda x: 
-                                x["positive"]["passed"]+x["negative"]["passed"]+x["positive_bigram"]["passed"]-x["positive"]["failed"]-x["positive_bigram"]["failed"]-x["negative"]["failed"])
-                results[domain]["fuzzy_tokens"]["positive"]["passed"] += best_fuzzy["positive"]["passed"]
-                results[domain]["fuzzy_tokens"]["positive"]["failed"] += best_fuzzy["positive"]["failed"]
-                results[domain]["fuzzy_tokens"]["positive_bigram"]["passed"] += best_fuzzy["positive_bigram"]["passed"]
-                results[domain]["fuzzy_tokens"]["positive_bigram"]["failed"] += best_fuzzy["positive_bigram"]["failed"]
-                results[domain]["fuzzy_tokens"]["negative"]["passed"] += best_fuzzy["negative"]["passed"]
-                results[domain]["fuzzy_tokens"]["negative"]["failed"] += best_fuzzy["negative"]["failed"]
-
-
-    return results
 
 def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
 
@@ -909,6 +866,9 @@ def main(args):
     elif args.base_model:
         model_group = ModelGroup(args.base_model, args.base_model, args.base_model)
         num_beams = 6
+    elif args.unified_model:
+        model_group = ModelGroup(args.unified_model, args.unified_model, args.unified_model)
+        num_beams = 6
 
     if args.llm:
         from transformers import Gemma3ForCausalLM
@@ -943,19 +903,35 @@ def main(args):
             test_cases = break_down_group(batch)
             if args.base_model and args.term_model and args.fuzzy_model:
                 model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
-                translations = ensemble.translate(
+                ensemble_translations = ensemble.translate(
                     test_cases,
                     model_types,
                     num_beams=num_beams,
                     max_length=100,
-                    only_main_model=False
+                    only_main_model=False,
+                    ensemble_emphasis_strength=args.ensemble_emphasis_strength,
+                    guide_emphasis=args.guide_emphasis,
+                    baseline_weight=args.baseline_weight
                 )
 
-                if (term_count,fuzzy_count) in combined_results:
-                    evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
-                else:
-                    eval_results = evaluate_translations(translations,batch)
-                    combined_results[(term_count,fuzzy_count)] = eval_results
+                eval_results = evaluate_translations(ensemble_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,ensemble_translations,eval_results)]
+                
+            # unified model translates all terms and fuzzies with single model
+            if args.unified_model:
+                # for unified model, we collapse all the test cases into a single one containing all the terms and fuzzies
+                unified_test_cases = []
+                for test_case in batch:
+                    unified_test_cases.append((test_case[0],test_case[1],test_case[2]))
+                
+                unified_translations = generate_unensembled(
+                    [[],unified_test_cases], # add empty list so indices work out
+                    model_group.models["term"], # term stands in for unified model
+                    model_group.baseline_tokenizer,
+                    1)
+                
+                eval_results = evaluate_translations(unified_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,unified_translations,eval_results)]
                 
             if args.base_model and not args.term_model and not args.fuzzy_model:    
                 # generate baseline translations to see the effect that external info makes. This is kind of wasteful, as it ends up translating the same sentence many times, but no time to unravel that now
@@ -965,19 +941,13 @@ def main(args):
                     model_group.baseline_tokenizer,
                     0)
 
-                eval_results = evaluate_translations_2(baseline_translations,batch)
+                eval_results = evaluate_translations(baseline_translations,batch)
                 test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,baseline_translations,eval_results)]
 
             if args.llm:
-                translations = translate_with_llm(batch,llm_model,llm_tokenizer)
-                eval_results = evaluate_translations_2(translations,batch)
-                if (term_count,fuzzy_count) in combined_results:
-                    evaluate_translations(translations,batch,combined_results[(term_count,fuzzy_count)])
-                else:
-                    eval_results = evaluate_translations(translations,batch)
-                    combined_results[(term_count,fuzzy_count)] = eval_results
-
-                test_cases_with_translations += [(*x[0],x[1]) for x in zip(batch,translations)]
+                llm_translations = translate_with_llm(batch,llm_model,llm_tokenizer)
+                eval_results = evaluate_translations(llm_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,llm_translations,eval_results)]
 
             # If only one model is used, also generate unensembled translations for comparison
             """if len(model_types) == 3:
@@ -1001,21 +971,30 @@ def main(args):
     # TODO: incorporarate LLM, implement unified model, implement max 5-term and max 5-fuzzy models,
     # figure out a composite score.
 
-    with open("output.csv", mode='w', newline='', encoding='utf-8') as file:
+    output_file_name = f"output_{args.ensemble_emphasis_strength}_{args.guide_emphasis}_{args.baseline_weight}.csv"
+
+    with open(output_file_name, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file, delimiter='\t')
 
         writer.writerow(["TermCount","FuzzyCount","Source","Terms","Fuzzies","Tests","Domain","Translation","term_failed","term_success","fuzzy_positive_success","fuzzy_positive_failed","fuzzy_negative_success","fuzzy_negative_failed","fuzzy_bigram_positive_success","fuzzy_bigram_positive_failed"])
         for sentence_data in test_cases_with_translations:
             writer.writerow(sentence_data)
 
-    print(f"Term failed: {sum([x[8] for x in test_cases_with_translations])}")
-    print(f"Term success: {sum([x[9] for x in test_cases_with_translations])}")
-    print(f"Fuzzy pos success: {sum([x[10] for x in test_cases_with_translations])}")
-    print(f"Fuzzy pos failed: {sum([x[11] for x in test_cases_with_translations])}")
-    print(f"Fuzzy neg success: {sum([x[12] for x in test_cases_with_translations])}")
-    print(f"Fuzzy neg failed: {sum([x[13] for x in test_cases_with_translations])}")
-    print(f"Fuzzy bigram success: {sum([x[14] for x in test_cases_with_translations])}")
-    print(f"Fuzzy bigram failed: {sum([x[15] for x in test_cases_with_translations])}")
+    result_string_builder = []
+    result_string_builder.append(f"ensemble_emphasis_strength: {args.ensemble_emphasis_strength}"+"\n")
+    result_string_builder.append(f"guide emphasis: {args.guide_emphasis}"+"\n")
+    result_string_builder.append(f"baseline_weight: {args.baseline_weight}"+"\n")
+
+    result_string_builder.append(f"Term failed: {sum([x[8] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Term success: {sum([x[9] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy pos success: {sum([x[10] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy pos failed: {sum([x[11] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy neg success: {sum([x[12] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy neg failed: {sum([x[13] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy bigram success: {sum([x[14] for x in test_cases_with_translations])}"+"\n")
+    result_string_builder.append(f"Fuzzy bigram failed: {sum([x[15] for x in test_cases_with_translations])}"+"\n")
+
+    return "".join(result_string_builder)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate test suite test cases using an ensemble of models accepting different kinds of retrieved information (terms, ngrams, full matches).")
@@ -1036,6 +1015,12 @@ if __name__ == "__main__":
         "--fuzzy_model",
         required=False,
         help="Fuzzy model."
+    )
+
+    parser.add_argument(
+        "--unified_model",
+        required=False,
+        help="Fuzzy and term model."
     )
 
     parser.add_argument(
@@ -1069,5 +1054,42 @@ if __name__ == "__main__":
         help="Batch size when translating."
     )
 
+    parser.add_argument(
+        "--ensemble_emphasis_strength",
+        type=float,
+        required=False,
+        help="How much to emphasize a model value for symbol in ensemble, if it differs from baseline value."
+    )
+
+    parser.add_argument(
+        "--guide_emphasis",
+        type=float,
+        required=False,
+        help="How much to emphasize model values that differ from baseline in the model distribution."
+    )
+
+    parser.add_argument(
+        "--baseline_weight",
+        type=float,
+        required=False,
+        help="How much weight to assign to the baseline model in multisource ensembles."
+    )
+
+    parser.add_argument(
+        "--parameter_search",
+        action="store_true",
+        required=False,
+        help="Run search for parameters."
+    )
+
     args = parser.parse_args()
-    main(args)
+    if args.parameter_search:
+        results = []
+        for ensemble_emphasis in [0,0.5,1]:
+            for guide_emphasis in [0]:
+                args.ensemble_emphasis_strength=ensemble_emphasis
+                args.guide_emphasis=guide_emphasis
+                results.append(main(args))
+        print("\n-------------------\n".join(results))
+    else:
+        print(main(args))
