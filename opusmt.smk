@@ -74,8 +74,8 @@ rule finetune_opusmt:
     params: 
         args=config["finetune-args"],
         best_metric=config["best-model-metric"],
-        segmented_input=lambda wildcards: "true" if wildcards.seg else "false" 
-    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" "{params.segmented_input}" "{input.vocab}" {params.args} >> {log} 2>&1'''
+        segmented_input=lambda wildcards: "true" if wildcards.seg else "false"
+    shell: '''bash pipeline/opusmt/finetune.sh {wildcards.src} {wildcards.trg} "{output.model}" "{input.model}" "{params.best_metric}" {threads} "0.{wildcards.learning_rate}" "{wildcards.epochs}" "{params.segmented_input}" "{input.vocab}" "{input.train_source}" "{input.train_target}" "{input.dev_source}" "{input.dev_target}" {params.args} >> {log} 2>&1'''
 
 
 rule ct2_conversion:

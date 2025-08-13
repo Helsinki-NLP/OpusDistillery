@@ -23,7 +23,11 @@ learn_rate=$7
 epochs=$8
 segmented_input=$9
 vocab=${10}
-extra_params=( "${@:11}" )
+spm_train_set_src=${11}
+spm_train_set_trg=${12}
+spm_valid_set_src=${13}
+spm_valid_set_trg=${14}
+extra_params=( "${@:15}" )
 vocab="${model_dir}/vocab.yml"
 
 #test -v GPUS
@@ -41,9 +45,6 @@ if [ -e "${optimizer_file}" ]; then
   cp ${base_model_dir}/model_unfinished.npz.progress.yml ${model_dir}
 fi
 
-spm_train_set_prefix="${model_dir}/train.sp"
-spm_valid_set_prefix="${model_dir}/valid.sp"
-
 all_model_metrics=(chrf ce-mean-words bleu-detok)
 
 # disable early stopping, valid set does not reflect specialized performance that we are fine-tuning for, training stops after n epochs.
@@ -58,8 +59,8 @@ echo "### Training ${model_dir}"
 "${MARIAN}"/marian \
   --type transformer \
   --model "${model_dir}/model_unfinished.npz" \
-  --train-sets "${spm_train_set_prefix}".{"${src}","${trg}"}.gz \
-  --valid-sets "${spm_valid_set_prefix}".{"${src}","${trg}"}.gz \
+  --train-sets "${spm_train_set_src}" "${spm_train_set_trg}" \
+  --valid-sets "${spm_valid_set_src}" "${spm_train_set_trg}" \
   -T "${model_dir}/tmp" \
   --shuffle-in-ram \
   --vocabs "${vocab}" "${vocab}" \
