@@ -4,6 +4,7 @@ import json
 import argparse
 import re
 import csv
+import random
 
 # IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.9 when translating with. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
 from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig
@@ -143,12 +144,22 @@ def sum_ignore_inf(tensor):
     
     return total_sum
 
+def print_top_tokens(tokenizer,tensor):
+    tokens = []
+    for value in tensor:
+        top_values, top_indices = torch.topk(value, 100)
+        for (top_value,top_i) in zip(top_values,top_indices):
+            tokens.append((top_value,tokenizer.decode(top_i)))
+    pass
+    #for token in tokens:
+    #    print(token)
+
 def combine_with_guide_softmax(
     softmax_tensor: torch.Tensor,
     tokenizer,
     ensemble_emphasis_strength: float = 100.0,
     guide_emphasis=0,
-    baseline_weight=0
+    baseline_weight=0.1
 ) -> torch.Tensor:
     """
     Combines model softmaxes using the last model as a guide.
@@ -164,27 +175,36 @@ def combine_with_guide_softmax(
     Returns:
         Combined softmax tensor of shape (num_positions, num_symbols).
     """
+    
     guide = softmax_tensor[-1]  # Shape: (num_positions, num_symbols)
     others = softmax_tensor[:-1]  # Shape: (num_models - 1, num_positions, num_symbols)
 
     if guide_emphasis != 0:
-        # Compute signed differences for all others at once
-        diff = others - guide.unsqueeze(0)          # broadcast over num_models-1
+        # 1. Signed difference: positive means others > guide, negative means others < guide
+        diff = others - guide.unsqueeze(0)   # shape: (num_models-1, num_positions, vocab_size)
 
-        # Signed weighting
-        weights = torch.exp(guide_emphasis * diff)  # positive diff → >1, negative diff → <1
+        # 2. Multiplicative boost factor
+        #    - Positive diff → factor > 1 (boost)
+        #    - Negative diff → factor < 1 (suppress)
+        boost = torch.exp(guide_emphasis * diff)
 
-        # Apply weights and re-normalize
-        weighted = others * weights
+        # print_top_tokens(tokenizer,boost)
+
+        # 3. Apply boost to the original distributions
+        weighted = others * boost
+
+        # 4. Renormalize across vocab so each (model, position) sums to 1
         emphasized = weighted / weighted.sum(dim=-1, keepdim=True)
-
+        
     if ensemble_emphasis_strength != 0 and len(others) > 1:
         # Compute absolute difference from guide
         diff = torch.abs(others - guide.unsqueeze(0))  # Shape: (num_models - 1, num_positions, num_symbols)
 
         # Higher difference => higher emphasis
-        # TODO: Why are weight 0.5?
         weights = F.softmax(ensemble_emphasis_strength * diff, dim=0)  # (num_models - 1, num_positions, num_symbols)
+
+        #print_top_tokens(tokenizer,weights)
+
 
     if guide_emphasis != 0:
         if ensemble_emphasis_strength != 0:
@@ -197,7 +217,7 @@ def combine_with_guide_softmax(
     elif ensemble_emphasis_strength != 0 and len(others) > 1:
         combined = torch.sum(weights * others, dim=0)  # (num_positions, num_symbols)
     else:
-        combined = others[0]
+        combined = torch.sum(others, dim=0)
     # Optionally include the guide in the final combination
     # For example: combine 90% weighted other models + 10% guide
     if baseline_weight != 0:
@@ -207,7 +227,29 @@ def combine_with_guide_softmax(
     combined = combined / combined.sum(dim=-1, keepdim=True)
     
     return combined
+    """
+    guide = softmax_tensor[-1]  # Shape: (num_positions, num_symbols)
+    others = softmax_tensor[:-1]  # Shape: (num_models - 1, num_positions, num_symbols)
+
+    # Compute absolute difference from guide
+    diff = torch.abs(others - guide.unsqueeze(0))  # Shape: (num_models - 1, num_positions, num_symbols)
+
+    # Higher difference => higher emphasis
+    weights = F.softmax(ensemble_emphasis_strength * diff, dim=0)  # (num_models - 1, num_positions, num_symbols)
+
+    # Weighted sum over other models
+    combined = torch.sum(weights * others, dim=0)  # (num_positions, num_symbols)
+
+    # Optionally include the guide in the final combination
+    # For example: combine 90% weighted other models + 10% guide
+    combined = 0.9 * combined + 0.1 * guide
+
+    # Normalize to ensure valid softmax (numerical safety)
+    combined = combined / combined.sum(dim=-1, keepdim=True)
     
+    return combined
+    """
+
 def weighted_softmax_combine(softmax_tensor: torch.Tensor, tokenizer, temperature: float = 1.0) -> torch.Tensor:
     """
     Emphasizes symbols that have significantly higher probabilities in one model compared to others.
@@ -344,7 +386,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
                 "original_batch_size": batch_size
             }
             
-            print("Model inputs:\n" + "\n".join(self.tokenizer.batch_decode(encoder_input_ids)))
+            #print("Model inputs:\n" + "\n".join(self.tokenizer.batch_decode(encoder_input_ids)))
 
     def __call__(self, input_ids, scores):
         if self.only_main_model:
@@ -675,6 +717,44 @@ def break_down_group(group):
 
     return [base_start] + term_model_lists + fuzzy_model_lists + [base_end]
 
+def sample_test_cases(data):
+    result = {}
+    for (x, y), items in data.items():
+        # Skip keys where second tuple item > 3
+        if y > 3:
+            continue
+        
+        if len(items) <= 100:
+            result[(x, y)] = items
+        else:
+            # Group by domain (5th element)
+            domain_groups = defaultdict(list)
+            for item in items:
+                domain = item[4]
+                domain_groups[domain].append(item)
+            
+            domains = list(domain_groups.keys())
+            quota = 50 // len(domains)  # base quota per domain
+            selected = []
+            
+            # First pass: sample quota from each domain
+            for domain in domains:
+                selected.extend(random.sample(domain_groups[domain], 
+                                              min(quota, len(domain_groups[domain]))))
+            
+            # If not yet 50, fill the gap with random leftover items
+            if len(selected) < 50:
+                # Flatten remaining items
+                remaining_items = [item for domain in domains for item in domain_groups[domain]
+                                   if item not in selected]
+                needed = 50 - len(selected)
+                if remaining_items:
+                    selected.extend(random.sample(remaining_items, 
+                                                  min(needed, len(remaining_items))))
+            
+            result[(x, y)] = selected
+    return result
+
 def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
     src_sentences, terms, fuzzies = zip(*test_cases_for_model[input_index])
 
@@ -690,10 +770,10 @@ def generate_unensembled(test_cases_for_model, model, tokenizer, input_index=1):
         )
     else:
         inputs = tokenizer(src_sentences, return_tensors="pt", padding=True).to(model.device)
-    print("Model inputs:\n" + "\n".join(tokenizer.batch_decode(inputs["input_ids"])))
+    #print("Model inputs:\n" + "\n".join(tokenizer.batch_decode(inputs["input_ids"])))
 
     translated = model.generate(**inputs)
-    print("Without ensembling:" + str([tokenizer.decode(t, skip_special_tokens=True) for t in translated]))
+    #print("Without ensembling:" + str([tokenizer.decode(t, skip_special_tokens=True) for t in translated]))
     return [tokenizer.decode(t, skip_special_tokens=True) for t in translated]
 
 class EvaluationResult:
@@ -885,10 +965,12 @@ def main(args):
 
     
 
+    test_cases_sampled = sample_test_cases(test_case_groups)
+
     # HACK: restrict combos for testing
     # TODO: make a more meaningful selection of a reasonable amount of cases (5000-10000?)
-    test_case_groups = {k: v for k,v in test_case_groups.items() if k == (1,1)}
-    test_case_groups[(1,1)] = test_case_groups[(1,1)][0:100]
+    #test_case_groups = {k: v for k,v in test_case_groups.items() if k == (1,1)}
+    #test_case_groups[(1,1)] = test_case_groups[(1,1)][0:100]
 
     test_cases_with_translations = []
 
@@ -897,7 +979,8 @@ def main(args):
     combined_results = {}
     combined_baseline_results = {}
 
-    for (term_count,fuzzy_count),test_case_group in test_case_groups.items():
+    for (term_count,fuzzy_count),test_case_group in test_cases_sampled.items():
+        print(f"Starting group with {term_count} terms and {fuzzy_count} fuzzies")
         for batch in [test_case_group[i:i + args.batch_size] for i in range(0, len(test_case_group), args.batch_size)]:
 
             test_cases = break_down_group(batch)
@@ -1076,6 +1159,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--seed",
+        type=int,
+        required=False,
+        help="Random seed for generating the subset to test."
+    )
+
+    parser.add_argument(
         "--parameter_search",
         action="store_true",
         required=False,
@@ -1083,10 +1173,14 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    
+    # Set seed so test set selection is deterministic
+    random.seed(args.seed)
+
     if args.parameter_search:
         results = []
         for ensemble_emphasis in [0,0.5,1]:
-            for guide_emphasis in [0]:
+            for guide_emphasis in [0,10000]:
                 args.ensemble_emphasis_strength=ensemble_emphasis
                 args.guide_emphasis=guide_emphasis
                 results.append(main(args))

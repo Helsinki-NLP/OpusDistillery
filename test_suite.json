@@ -15432,7 +15432,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Ss]uoritusarvioin[nt]i[^ ]*?\\b"
+                                "condition": "\\b[Ss]uoritusarvioin[nt][^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -15442,7 +15442,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Ss]uorituskykyarvioin[nt]i[^ ]*?\\b"
+                                "condition": "\\b[Ss]uorituskykyarvioin[nt][^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -16894,11 +16894,11 @@
                         "selected": true
                     },
                     {
-                        "target": "julkiset laitos",
+                        "target": "julkinen laitos",
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Jj]ulkiset laito[ks][^ ]*?\\b"
+                                "condition": "\\b[Jj]ulki[ns]e[^ ]* laito[ks][^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -36759,7 +36759,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Aa]rkaluonteinen tiet[^ ]*?\\b"
+                                "condition": "\\b[Aa]rkaluontei[^ ]*? tiet[^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -36957,7 +36957,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Vv]elvollisuu\\b"
+                                "condition": "\\b[Vv]elvollisuu[^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -36967,7 +36967,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Vv]elvoitt?e\\b"
+                                "condition": "\\b[Vv]elvoitt?e[^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -36979,7 +36979,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Vv]uokranmaksu\\b"
+                                "condition": "\\b[Vv]uokranmaksu[^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -36989,7 +36989,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Vv]uokran maksami[sn]\\b"
+                                "condition": "\\b[Vv]uokran maksami[sn][^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -37001,7 +37001,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Yy]ll\u00e4pitovastu[ui]\\b"
+                                "condition": "\\b[Yy]ll\u00e4pitovastu[ui][^ ]*?\\b"
                             }
                         ],
                         "selected": true
@@ -37011,7 +37011,7 @@
                         "tests": [
                             {
                                 "type": "term_present",
-                                "condition": "\\b[Hh]uoltovastu[ui]\\b"
+                                "condition": "\\b[Hh]uoltovastu[ui][^ ]*?\\b"
                             }
                         ],
                         "selected": true
