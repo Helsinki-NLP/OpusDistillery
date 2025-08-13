@@ -60,7 +60,7 @@ echo "### Training ${model_dir}"
   --type transformer \
   --model "${model_dir}/model_unfinished.npz" \
   --train-sets "${spm_train_set_src}" "${spm_train_set_trg}" \
-  --valid-sets "${spm_valid_set_src}" "${spm_train_set_trg}" \
+  --valid-sets "${spm_valid_set_src}" "${spm_valid_set_trg}" \
   -T "${model_dir}/tmp" \
   --shuffle-in-ram \
   --vocabs "${vocab}" "${vocab}" \
