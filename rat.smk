@@ -205,6 +205,13 @@ rule combine_targetsim_and_sourcesim:
 
 # in addition to the rat augmentation data, add term augmentations for producing a unified model that can process both terms and fuzzies
 rule append_terms:
+    wildcard_constraints:
+        model="[^/]+",
+        scheme="(\w+-){3}(\w+)",
+        term_ratio="\d+",
+        sents_per_term_sent="\d+",
+        max_terms_per_sent="\d+",
+        set="\w+"
     log: "{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/append_terms_{model}_{scheme}-{term_ratio}-{sents_per_term_sent}-{max_terms_per_sent}/{set}_append_terms.log"
     input:
         rat_src="{project_name}/{src}-{trg}/{preprocessing}/build_index/find_matches_{contrast_factor}{use_ngrams}/augment_train_{fuzzy_min_score}{fuzzy_max_score}_{min_fuzzies}_{max_fuzzies}{rest_of_augment_step,[^/]*}/{set}.{src}.gz",

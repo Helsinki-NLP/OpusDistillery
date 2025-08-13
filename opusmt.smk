@@ -3,7 +3,9 @@ wildcard_constraints:
     trg="\w{2,3}",
     train_vocab="train_joint_spm_vocab[^/]+",
     model_name="[^/]+",
-    seg="(|_seg)"
+    seg="(|_seg)",
+    epochs="\d+",
+    learning_rate="\d+"
 
 gpus_num=config["gpus-num"]
 
@@ -57,8 +59,6 @@ rule finetune_opusmt:
     message: "Finetune OPUS-MT model on corpus"
     log: "{datadir}/{project_name}/{src}-{trg}/{preprocessing}/finetune{seg}_{learning_rate}_{epochs}_{model_name}/finetune.log"
     conda: "envs/base.yml"
-    wildcard_constraints:
-        learning_rate="\d+"
     threads: gpus_num*7
     resources: gpu=gpus_num
     input:

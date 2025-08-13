@@ -3,11 +3,16 @@ import torch.nn.functional as F
 import json
 import argparse
 import re
+import sys
+import os
 import csv
 import random
 
-# IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.9 when translating with. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
+# IMPORTANT: Marian models seem to be broken in later transformers versions, so use 4.28.0 when translating with them. That however do not have Gemma3ForCausalLM, so you have to use a newer transformers for that.
 from transformers import LogitsProcessor, MarianTokenizer, MarianMTModel, AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList, AutoConfig, BeamSearchScorer, BitsAndBytesConfig
+
+import torch._dynamo
+torch._dynamo.config.cache_size_limit = 128  # prevent FailOnRecompileLimitHit  
 
 from itertools import chain, combinations, product
 from collections import defaultdict
@@ -914,14 +919,18 @@ def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
         )
         templated_prompts.append(templated_prompt)
 
-    inputs = llm_tokenizer(templated_prompts,padding=True,return_tensors="pt").to(device).to(torch.bfloat16)
+    inputs = llm_tokenizer(templated_prompts,padding=True,return_tensors="pt").to(device)
 
     with torch.inference_mode():
         outputs = llm_model.generate(**inputs, max_new_tokens=128)
 
     outputs = llm_tokenizer.batch_decode(outputs)
     only_translations = [x.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip() for x in outputs]
+    del outputs,inputs
     
+    with torch.no_grad():
+        torch.cuda.empty_cache()
+
     return only_translations
 
 def main(args):
@@ -979,7 +988,7 @@ def main(args):
     combined_results = {}
     combined_baseline_results = {}
 
-    for (term_count,fuzzy_count),test_case_group in test_cases_sampled.items():
+    for (term_count,fuzzy_count),test_case_group in reversed(test_cases_sampled.items()):
         print(f"Starting group with {term_count} terms and {fuzzy_count} fuzzies")
         for batch in [test_case_group[i:i + args.batch_size] for i in range(0, len(test_case_group), args.batch_size)]:
 
@@ -1054,7 +1063,8 @@ def main(args):
     # TODO: incorporarate LLM, implement unified model, implement max 5-term and max 5-fuzzy models,
     # figure out a composite score.
 
-    output_file_name = f"output_{args.ensemble_emphasis_strength}_{args.guide_emphasis}_{args.baseline_weight}.csv"
+    output_file_name = args.output_path
+    #output_file_name = f"output_{args.ensemble_emphasis_strength}_{args.guide_emphasis}_{args.baseline_weight}.csv"
 
     with open(output_file_name, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file, delimiter='\t')
@@ -1131,6 +1141,12 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
+        "--output_path",
+        required=True,
+        help="Path to the output csv."
+    )
+    
+    parser.add_argument(
         "--batch_size",
         type=int,
         required=True,
@@ -1171,8 +1187,20 @@ if __name__ == "__main__":
         required=False,
         help="Run search for parameters."
     )
+    
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        required=False,
+        help="Overwrite output file."
+    )
+    
 
     args = parser.parse_args()
+    
+    if os.path.isfile(args.output_path) and not args.overwrite:
+        print(f"Error: Output file {args.output_path} exists, use --overwrite to overwrite.")
+        sys.exit(1)  # Exit the program with a non-zero status code
     
     # Set seed so test set selection is deterministic
     random.seed(args.seed)
