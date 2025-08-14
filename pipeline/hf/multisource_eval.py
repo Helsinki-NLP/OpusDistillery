@@ -985,6 +985,12 @@ def main(args):
     elif args.unified_model:
         model_group = ModelGroup(args.unified_model, args.unified_model, args.unified_model)
         num_beams = 6
+    elif args.term_model:
+        model_group = ModelGroup(args.term_model, args.term_model, args.term_model)
+        num_beams = 6
+    elif args.fuzzy_model:
+        model_group = ModelGroup(args.fuzzy_model, args.fuzzy_model, args.fuzzy_model)
+        num_beams = 6
 
     if args.llm:
         model_id = args.llm
@@ -1038,7 +1044,40 @@ def main(args):
 
                 eval_results = evaluate_translations(ensemble_translations,batch)
                 test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,ensemble_translations,eval_results)]
+
+            # evaluate with just term model, assumes a single model that can handle multiple terms
+            if args.term_model and not args.fuzzy_model:
+                # for term-only model, we collapse all the test cases into a single one containing all the terms and fuzzies
+                term_test_cases = []
+                for test_case in batch:
+                    term_test_cases.append((test_case[0],test_case[1],[]))
                 
+                term_translations = generate_unensembled(
+                    [[],term_test_cases], # add empty list so indices work out
+                    model_group.models["term"], # term stands in for unified model
+                    model_group.baseline_tokenizer,
+                    1)
+                
+                eval_results = evaluate_translations(term_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,fuzzy_translations,eval_results)]
+
+            # evaluate with just fuzzy model, assumes a single model that can handle multiple fuzzies
+            if args.fuzzy_model and not args.term_model:
+                # for term-only model, we collapse all the test cases into a single one containing all the terms and fuzzies
+                fuzzy_test_cases = []
+                for test_case in batch:
+                    fuzzy_test_cases.append((test_case[0],[],test_case[2]))
+                
+                fuzzy_translations = generate_unensembled(
+                    [[],fuzzy_test_cases], # add empty list so indices work out
+                    model_group.models["fuzzy"], # term stands in for unified model
+                    model_group.baseline_tokenizer,
+                    1)
+                
+                eval_results = evaluate_translations(fuzzy_translations,batch)
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,fuzzy_translations,eval_results)]
+
+
             # unified model translates all terms and fuzzies with single model
             if args.unified_model:
                 # for unified model, we collapse all the test cases into a single one containing all the terms and fuzzies
