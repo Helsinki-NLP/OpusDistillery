@@ -879,7 +879,7 @@ def evaluate_translations(translations, test_cases):
     return results
 
 
-def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
+def translate_with_llm(batch,llm_model,llm_tokenizer,model_id,device="cuda"):
 
     templated_prompts = []
     for source, terms, fuzzies, _, _ in batch:
@@ -893,24 +893,39 @@ def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
         for index,fuzzy in enumerate(fuzzies):
             fuzzy_string += f"Fuzzy match {index+1}: {fuzzy}\n"
         
-        messages = [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": "You are a translator translating from English to Finnish."}]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text", 
-                        "text": '''Translate the sentence below to Finnish using the specified terms and fuzzy matches. Use the structure of the fuzzy matches in the translation if appropriate, but do not copy parts of the fuzzy match to the translation if they are not semantically present in the source sentence. Using the specified term is more important than using the fuzzy match, so if a term and the fuzzy match conflict, always prefer the term. Output the answer in the following format, and do not output anything else: TRANSLATION: TRANSLATION GOES HERE.
-                        {terms}{fuzzies}.
-                        Source sentence to translate: {source}
-                        '''.format(terms=term_string,fuzzies=fuzzy_string,source=source)
-                    }
-                ]
-            }
-        ]
+        if "gemma" in model_id:
+            messages = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": "You are a translator translating from English to Finnish."}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": '''Translate the sentence below to Finnish using the specified terms and fuzzy matches. Use the structure of the fuzzy matches in the translation if appropriate, but do not copy parts of the fuzzy match to the translation if they are not semantically present in the source sentence. Using the specified term is more important than using the fuzzy match, so if a term and the fuzzy match conflict, always prefer the term. Output the answer in the following format, and do not output anything else: TRANSLATION: TRANSLATION GOES HERE.
+                            {terms}{fuzzies}.
+                            Source sentence to translate: {source}
+                            '''.format(terms=term_string,fuzzies=fuzzy_string,source=source)
+                        }
+                    ]
+                }
+            ]
+        else:
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a translator translating from English to Finnish."
+                },
+                {
+                    "role": "user",
+                    "content": '''Translate the sentence below to Finnish using the specified terms and fuzzy matches. Use the structure of the fuzzy matches in the translation if appropriate, but do not copy parts of the fuzzy match to the translation if they are not semantically present in the source sentence. Using the specified term is more important than using the fuzzy match, so if a term and the fuzzy match conflict, always prefer the term. Only output the translation.
+                            {terms}{fuzzies}.
+                            Source sentence to translate: {source}
+                            '''.format(terms=term_string,fuzzies=fuzzy_string,source=source)
+                }
+            ]
 
         templated_prompt = llm_tokenizer.apply_chat_template(
             messages,
@@ -925,7 +940,19 @@ def translate_with_llm(batch,llm_model,llm_tokenizer,device="cuda"):
         outputs = llm_model.generate(**inputs, max_new_tokens=128)
 
     outputs = llm_tokenizer.batch_decode(outputs)
-    only_translations = [x.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip() for x in outputs]
+    only_translations = []
+    for output in outputs:
+        try:
+            if "gemma" in model_id:
+                only_translation = output.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip()
+            else:
+                only_translation = output.split("<|im_start|>assistant")[1].split("<|im_end|>")[0].strip()
+            only_translations.append(only_translation)
+        except Exception as e:
+            print(output)
+            only_translations.append("no translation found")
+
+    print(only_translations[0])
     del outputs,inputs
     
     with torch.no_grad():
@@ -960,16 +987,19 @@ def main(args):
         num_beams = 6
 
     if args.llm:
-        from transformers import Gemma3ForCausalLM
-        # initialize llm model
         model_id = args.llm
-        #quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-        llm_model = Gemma3ForCausalLM.from_pretrained(
-            model_id, device_map="cuda",torch_dtype=torch.bfloat16 #, quantization_config=quantization_config
-        ).eval()
+        if "gemma" in model_id:
+            from transformers import Gemma3ForCausalLM
+            # initialize llm model
+            #quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+            llm_model = Gemma3ForCausalLM.from_pretrained(
+                model_id, device_map="cuda",torch_dtype=torch.bfloat16 #, quantization_config=quantization_config
+            ).eval()
+        else:
+            llm_model = AutoModelForCausalLM.from_pretrained(model_id, device_map="cuda",torch_dtype=torch.bfloat16)
+            
         llm_tokenizer = AutoTokenizer.from_pretrained(model_id)
-
-    
+        
     test_case_groups = create_test_cases_with_tests(args.test_suite_path)
 
     
@@ -1037,7 +1067,7 @@ def main(args):
                 test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,baseline_translations,eval_results)]
 
             if args.llm:
-                llm_translations = translate_with_llm(batch,llm_model,llm_tokenizer)
+                llm_translations = translate_with_llm(batch,llm_model,llm_tokenizer,args.llm)
                 eval_results = evaluate_translations(llm_translations,batch)
                 test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,llm_translations,eval_results)]
 

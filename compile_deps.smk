@@ -24,7 +24,7 @@ rule fast_align:
     conda: "envs/base.yml"
     threads: 4
 #    group: 'setup'
-    output: fast_align=protected(f"{bin}/fast_align"), atools=protected(f"{bin}/atools")
+    output: fast_align=f"{bin}/fast_align", atools=f"{bin}/atools"
     shell: 'bash pipeline/setup/compile-fast-align.sh {fast_align_build} {threads}  >> {log} 2>&1'
 
 rule compile_preprocess:
@@ -42,6 +42,6 @@ rule extract_lex:
     conda: "envs/base.yml"
     threads: 4
 #    group: 'setup'
-    output: protected(f"{bin}/extract_lex")
+    output: f"{bin}/extract_lex"
     shell: 'bash pipeline/setup/compile-extract-lex.sh {extract_lex_build} {threads} >> {log} 2>&1'
 
