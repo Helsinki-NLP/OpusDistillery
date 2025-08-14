@@ -944,10 +944,10 @@ def translate_with_llm(batch,llm_model,llm_tokenizer,model_id,device="cuda"):
     for output in outputs:
         try:
             if "gemma" in model_id:
-                only_translation = output.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip()
+                only_translation = output.split("TRANSLATION:")[2].split("<end_of_turn>")[0].strip().replace("\n","")
             else:
                 only_translation = output.split("<|im_start|>assistant")[1].split("<|im_end|>")[0].strip()
-            only_translations.append(only_translation)
+            only_translations.append(only_translation.replace("\n",""))
         except Exception as e:
             print(output)
             only_translations.append("no translation found")
