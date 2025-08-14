@@ -1081,7 +1081,7 @@ def main(args):
                     1)
                 
                 eval_results = evaluate_translations(term_translations,batch)
-                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,fuzzy_translations,eval_results)]
+                test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,term_translations,eval_results)]
 
             # evaluate with just fuzzy model, assumes a single model that can handle multiple fuzzies
             if args.fuzzy_model and not args.term_model:
