@@ -1030,17 +1030,39 @@ def main(args):
 
             test_cases = break_down_group(batch)
             if args.base_model and args.term_model and args.fuzzy_model:
-                model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
-                ensemble_translations = ensemble.translate(
-                    test_cases,
-                    model_types,
-                    num_beams=num_beams,
-                    max_length=100,
-                    only_main_model=False,
-                    ensemble_emphasis_strength=args.ensemble_emphasis_strength,
-                    guide_emphasis=args.guide_emphasis,
-                    baseline_weight=args.baseline_weight
-                )
+                if args.multimodels:
+                    # TODO: add multimodel handling here
+                    model_types = ["base"] + ["term"] + ["fuzzy"] + ["base"]
+                    multimodel_test_cases = [[],[],[],[]]
+                    for test_case in batch:
+                        multimodel_test_cases[0].append((test_case[0],[],[]))
+                        multimodel_test_cases[1].append((test_case[0],test_case[1],[]))
+                        multimodel_test_cases[2].append((test_case[0],[],test_case[2]))
+                        multimodel_test_cases[3].append((test_case[0],[],[]))
+
+                    ensemble_translations = ensemble.translate(
+                        multimodel_test_cases,
+                        model_types,
+                        num_beams=num_beams,
+                        max_length=100,
+                        only_main_model=False,
+                        ensemble_emphasis_strength=args.ensemble_emphasis_strength,
+                        guide_emphasis=args.guide_emphasis,
+                        baseline_weight=args.baseline_weight
+                    )
+                                                        
+                else:
+                    model_types = ["base"] + ["term"] * term_count + ["fuzzy"] * fuzzy_count + ["base"]
+                    ensemble_translations = ensemble.translate(
+                        test_cases,
+                        model_types,
+                        num_beams=num_beams,
+                        max_length=100,
+                        only_main_model=False,
+                        ensemble_emphasis_strength=args.ensemble_emphasis_strength,
+                        guide_emphasis=args.guide_emphasis,
+                        baseline_weight=args.baseline_weight
+                    )
 
                 eval_results = evaluate_translations(ensemble_translations,batch)
                 test_cases_with_translations += [(term_count,fuzzy_count,*x[0],x[1],*x[2].get_as_tuple()) for x in zip(batch,ensemble_translations,eval_results)]
@@ -1262,6 +1284,13 @@ if __name__ == "__main__":
         action="store_true",
         required=False,
         help="Overwrite output file."
+    )
+
+    parser.add_argument(
+        "--multimodels",
+        action="store_true",
+        required=False,
+        help="Two models in ensemble, term and fuzzy, with each having multiple items added to input."
     )
     
 
