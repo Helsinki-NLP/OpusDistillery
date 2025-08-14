@@ -28,7 +28,7 @@ spm_train_set_trg=${12}
 spm_valid_set_src=${13}
 spm_valid_set_trg=${14}
 extra_params=( "${@:15}" )
-vocab="${model_dir}/vocab.yml"
+#vocab="${model_dir}/vocab.yml"
 
 #test -v GPUS
 #test -v MARIAN
