@@ -162,6 +162,7 @@ def print_top_tokens(tokenizer,tensor):
 def combine_with_guide_softmax(
     softmax_tensor: torch.Tensor,
     tokenizer,
+    model_types,
     ensemble_emphasis_strength: float = 100.0,
     guide_emphasis=0,
     baseline_weight=0.1
@@ -181,6 +182,48 @@ def combine_with_guide_softmax(
         Combined softmax tensor of shape (num_positions, num_symbols).
     """
     
+    if ensemble_emphasis_strength == 0 and guide_emphasis == 0:
+        combined = torch.sum(others, dim=0)
+        combined = combined / combined.sum(dim=-1, keepdim=True)
+        return combined
+    else:
+        num_models, BB, vocab_size = softmax_tensor.shape
+
+        guide = softmax_tensor[-1]               # (BB, vocab_size)
+        others = softmax_tensor[:-1]             # (num_models-1, BB, vocab_size)
+
+        # Top-10 tokens for each model and batch/beam
+        topk_vals, topk_idx = others.topk(k=10, dim=-1)  # (num_models-1, BB, 10)
+
+        # Expand guide to match others
+        guide_expanded = guide.unsqueeze(0).expand(others.size(0), -1, -1)  # (num_models-1, BB, vocab_size)
+        guide_topk_vals = guide_expanded.gather(-1, topk_idx)               # (num_models-1, BB, 10)
+
+        # Differences
+        diff = topk_vals - guide_topk_vals  # (num_models-1, BB, 10)
+
+        # Sum over top-k tokens → shape: (num_models-1, BB)
+        diff_sum = diff.sum(dim=-1)
+
+        # Transpose so shape is (BB, num_models-1)
+        diff_sum = diff_sum.transpose(0, 1)
+
+        # Softmax over models dimension for each batch/beam
+        temperature = ensemble_emphasis_strength
+
+        # model_types: list/tuple of strings, length = num_models-1
+        scale_factor = guide_emphasis  # how much to emphasize term models
+
+        # Make a tensor mask for term models: shape (num_models-1,)
+        term_mask = torch.tensor([t == "term" for t in model_types], dtype=diff_sum.dtype, device=diff_sum.device)
+
+        diff_sum = diff_sum * (1 + term_mask * (scale_factor - 1))
+        weights = F.softmax(diff_sum * temperature, dim=1)  # (BB, num_models-1)  
+
+        ensemble = (others.transpose(0, 1) * weights.unsqueeze(-1)).sum(dim=1)
+
+        return ensemble
+
     guide = softmax_tensor[-1]  # Shape: (num_positions, num_symbols)
     others = softmax_tensor[:-1]  # Shape: (num_models - 1, num_positions, num_symbols)
 
@@ -451,7 +494,7 @@ class MultiInputLogitsProcessor(LogitsProcessor):
         #mean_log_probs = torch.log(all_probs.mean(dim=0))
         
         #mean_log_probs = torch.log(weighted_softmax_combine(all_probs, self.tokenizer))
-        mean_log_probs = torch.log(combine_with_guide_softmax(all_probs, self.tokenizer,self.ensemble_emphasis_strength,self.guide_emphasis,self.baseline_weight))
+        mean_log_probs = torch.log(combine_with_guide_softmax(all_probs, self.tokenizer, self.model_types[1:-1],self.ensemble_emphasis_strength,self.guide_emphasis,self.baseline_weight))
         
         return mean_log_probs
         #return torch.logsumexp(all_probs, dim=0) - torch.log(torch.tensor(len(self.models), device=scores.device))
