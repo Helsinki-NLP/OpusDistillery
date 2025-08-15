@@ -119,53 +119,85 @@ def main(input_directory, output_directory, model_name="Unbabel/wmt20-comet-qe-d
     combined_bucket_data = {i: {} for i in range(1, 6)}
     combined_fuzzy_bucket_data = {i: {} for i in range(0, 4)}
 
-    for fname in os.listdir(input_directory):
-        if not (fname.lower().endswith(".csv") or fname.lower().endswith(".tsv")):
-            continue
-        path = os.path.join(input_directory, fname)
+    # System-wide CSV (unchanged)
+    out_csv = os.path.join(output_directory, "all_system_results.csv")
+    with open(out_csv, 'w', newline='', encoding='utf-8') as output_file:
 
-        # All rows
-        result_all = evaluate_file(path, model, gpus)
-
-        # Only rows with FuzzyCount <= 1
-        filtered_records = []
-        with open(path, newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter='\t')
-            for row in reader:
-                if int(row.get('FuzzyCount', 0)) <= 1:
-                    filtered_records.append(row)
-        filtered_file = path + ".filtered.tmp"
-        with open(filtered_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=reader.fieldnames, delimiter='\t')
-            writer.writeheader()
-            writer.writerows(filtered_records)
-        result_filtered = evaluate_file(filtered_file, model, gpus)
-
-        all_results[fname] = {'all': result_all, 'fuzzy0or1': result_filtered}
-
-        # System-wide CSV (unchanged)
-        out_csv = os.path.join(output_directory, fname.replace('.csv', '_results.csv').replace('.tsv', '_results.csv'))
-        with open(out_csv, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
+        for fname in os.listdir(input_directory):
+            if not (fname.lower().endswith(".csv") or fname.lower().endswith(".tsv")):
+                continue
+            path = os.path.join(input_directory, fname)
+    
+    
+    
+            # All rows
+            result_all = evaluate_file(path, model, gpus)
+    
+            # Only rows with FuzzyCount <= 1
+            filtered_records = []
+            with open(path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                for row in reader:
+                    if int(row.get('FuzzyCount', 0)) <= 1:
+                        filtered_records.append(row)
+            filtered_file = path + ".filtered.tmp"
+            with open(filtered_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=reader.fieldnames, delimiter='\t')
+                writer.writeheader()
+                writer.writerows(filtered_records)
+            result_filtered = evaluate_file(filtered_file, model, gpus)
+            
+            # Only rows with TermCount = 0
+            filtered_records = []
+            with open(path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                for row in reader:
+                    if int(row.get('TermCount', 0)) == 0:
+                        filtered_records.append(row)
+            filtered_file = path + ".filtered_noterm.tmp"
+            with open(filtered_file, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=reader.fieldnames, delimiter='\t')
+                writer.writeheader()
+                writer.writerows(filtered_records)
+            result_filtered_noterm = evaluate_file(filtered_file, model, gpus)
+    
+            all_results[fname] = {'all': result_all, 'fuzzy0or1': result_filtered, 'noterm': result_filtered_noterm}
+    
+            writer = csv.writer(output_file)
             writer.writerow(['model', 'comet_score', 'avg_composite', 'avg_term', 'avg_fuzzy'] +
                             list(result_all['totals'].keys()))
-            writer.writerow([model_name,
+            writer.writerow([f"{fname}-all",
                              result_all['comet_score'],
                              result_all['avg_composite'],
                              result_all['avg_term'],
                              result_all['avg_fuzzy']] +
                             list(result_all['totals'].values()))
-
-        # Store bucketed term results
-        for bucket_num in range(1, 6):
-            combined_bucket_data[bucket_num][fname] = result_all['bucket_avgs'].get(bucket_num, 0)
-        # Store fuzzy bucket results
-        for bucket_num in range(0, 4):
-            combined_fuzzy_bucket_data[bucket_num][fname] = result_all['fuzzy_bucket_avgs'].get(bucket_num, 0)
-
-        print(f"File: {fname}")
-        print("All sentences:", result_all)
-        print("FuzzyCount <=1 sentences:", result_filtered)
+            
+            writer.writerow([f"{fname}-fuzzy0or1",
+                             result_filtered['comet_score'],
+                             result_filtered['avg_composite'],
+                             result_filtered['avg_term'],
+                             result_filtered['avg_fuzzy']] +
+                            list(result_filtered['totals'].values()))
+                            
+            writer.writerow([f"{fname}-noterm",
+                             result_filtered_noterm['comet_score'],
+                             result_filtered_noterm['avg_composite'],
+                             result_filtered_noterm['avg_term'],
+                             result_filtered_noterm['avg_fuzzy']] +
+                            list(result_filtered_noterm['totals'].values()))
+    
+            # Store bucketed term results
+            for bucket_num in range(1, 6):
+                combined_bucket_data[bucket_num][fname] = result_all['bucket_avgs'].get(bucket_num, 0)
+            # Store fuzzy bucket results
+            for bucket_num in range(0, 4):
+                combined_fuzzy_bucket_data[bucket_num][fname] = result_all['fuzzy_bucket_avgs'].get(bucket_num, 0)
+    
+            print(f"File: {fname}")
+            print("All sentences:", result_all)
+            print("FuzzyCount <=1 sentences:", result_filtered)
+            print("TermCount = 0 sentences:", result_filtered)
 
     # Write combined term bucketed results
     all_systems = sorted(all_results.keys())

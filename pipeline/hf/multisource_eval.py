@@ -182,6 +182,7 @@ def combine_with_guide_softmax(
         Combined softmax tensor of shape (num_positions, num_symbols).
     """
     
+    """ TODO: this is a newer, more clear attempt at contrastive ensembling, but doesn't seem to work as well as the confused version below
     if ensemble_emphasis_strength == 0 and guide_emphasis == 0:
         combined = torch.sum(others, dim=0)
         combined = combined / combined.sum(dim=-1, keepdim=True)
@@ -222,7 +223,7 @@ def combine_with_guide_softmax(
 
         ensemble = (others.transpose(0, 1) * weights.unsqueeze(-1)).sum(dim=1)
 
-        return ensemble
+        return ensemble"""
 
     guide = softmax_tensor[-1]  # Shape: (num_positions, num_symbols)
     others = softmax_tensor[:-1]  # Shape: (num_models - 1, num_positions, num_symbols)
@@ -765,14 +766,14 @@ def break_down_group(group):
 
     return [base_start] + term_model_lists + fuzzy_model_lists + [base_end]
 
-def sample_test_cases(data):
+def sample_test_cases(data, cases_per_group):
     result = {}
     for (x, y), items in data.items():
         # Skip keys where second tuple item > 3
         if y > 3:
             continue
         
-        if len(items) <= 100:
+        if len(items) <= cases_per_group:
             result[(x, y)] = items
         else:
             # Group by domain (5th element)
@@ -782,7 +783,7 @@ def sample_test_cases(data):
                 domain_groups[domain].append(item)
             
             domains = list(domain_groups.keys())
-            quota = 50 // len(domains)  # base quota per domain
+            quota = cases_per_group // len(domains)  # base quota per domain
             selected = []
             
             # First pass: sample quota from each domain
@@ -791,11 +792,11 @@ def sample_test_cases(data):
                                               min(quota, len(domain_groups[domain]))))
             
             # If not yet 50, fill the gap with random leftover items
-            if len(selected) < 50:
+            if len(selected) < cases_per_group:
                 # Flatten remaining items
                 remaining_items = [item for domain in domains for item in domain_groups[domain]
                                    if item not in selected]
-                needed = 50 - len(selected)
+                needed = cases_per_group - len(selected)
                 if remaining_items:
                     selected.extend(random.sample(remaining_items, 
                                                   min(needed, len(remaining_items))))
@@ -1053,7 +1054,7 @@ def main(args):
 
     
 
-    test_cases_sampled = sample_test_cases(test_case_groups)
+    test_cases_sampled = sample_test_cases(test_case_groups, 100)
 
     # HACK: restrict combos for testing
     # TODO: make a more meaningful selection of a reasonable amount of cases (5000-10000?)
