@@ -147,31 +147,6 @@ In this case, the lang_tags mapping will be used in the prompt.
 
 Note: When using a Hugging Face model as a teacher, there is no scoring or cross-entropy filtering.
 
-#### CTranslate2
-
-The pipeline also supports CTranslate2 inference for HuggingFace models, which provides a considerable speedup.
-For that, simply add new boolean key:
-
-```yaml
-huggingface:
-    modelname: "facebook/nllb-200-distilled-1.3B"
-    lang_info: True
-    batch_size: 4096
-    lang_tags:
-      en: eng_Latn
-      ja: jpn_Jpan
-    ct2: True
-```
-
-We have done some benchmarking on 4 Nvidia Ampere A100 GPUs that shows CTranslate2 provides a 26x faster inference:
-
-```markdown
-| Model                               | Type         | Batch size | Return sequences | Sent/s  |
-|-------------------------------------|--------------|------------|------------------|---------|
-| facebook/nllb-200-distilled-1.3B   | ctranslate2   | 8192       | 8                | 406,316 |
-| facebook/nllb-200-distilled-1.3B   | huggingface  | 8          | 8                | 15,37   |
-```
-
 ## Backward models
 
 Currently, only OPUS-MT models are available as backward models for scoring translations.

@@ -97,10 +97,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#teacher-models">Teacher models</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#opus-mt-teachers">OPUS-MT Teachers</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#hugging-face-teachers">Hugging Face Teachers</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#ctranslate2">CTranslate2</a></li>
-</ul>
-</li>
+<li class="toctree-l3"><a class="reference internal" href="#hugging-face-teachers">Hugging Face Teachers</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#backward-models">Backward models</a></li>
@@ -328,28 +325,6 @@ Otherwise, you can specify the path to a custom OpusFilter configuration file su
 </div>
 <p>In this case, the lang_tags mapping will be used in the prompt.</p>
 <p>Note: When using a Hugging Face model as a teacher, there is no scoring or cross-entropy filtering.</p>
-<div class="section" id="ctranslate2">
-<h4>CTranslate2<a class="headerlink" href="#ctranslate2" title="Permalink to this headline">¶</a></h4>
-<p>The pipeline also supports CTranslate2 inference for HuggingFace models, which provides a considerable speedup.
-For that, simply add new boolean key:</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">huggingface</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">modelname</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;facebook/nllb-200-distilled-1.3B&quot;</span>
-<span class="w">    </span><span class="nt">lang_info</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
-<span class="w">    </span><span class="nt">batch_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4096</span>
-<span class="w">    </span><span class="nt">lang_tags</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">en</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eng_Latn</span>
-<span class="w">      </span><span class="nt">ja</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jpn_Jpan</span>
-<span class="w">    </span><span class="nt">ct2</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
-</pre></div>
-</div>
-<p>We have done some benchmarking on 4 Nvidia Ampere A100 GPUs that shows CTranslate2 provides a 26x faster inference:</p>
-<div class="highlight-markdown notranslate"><div class="highlight"><pre><span></span>| Model                               | Type         | Batch size | Return sequences | Sent/s  |
-|-------------------------------------|--------------|------------|------------------|---------|
-| facebook/nllb-200-distilled-1.3B   | ctranslate2   | 8192       | 8                | 406,316 |
-| facebook/nllb-200-distilled-1.3B   | huggingface  | 8          | 8                | 15,37   |
-</pre></div>
-</div>
-</div>
 </div>
 </div>
 <div class="section" id="backward-models">
