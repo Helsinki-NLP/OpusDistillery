@@ -31,8 +31,10 @@ if config_file == "default": #if a no configuration is given, use default
 	]
 else:
 	with open(config_file, 'r') as file:
-		filter_params = yaml.safe_load(file)
-	
+		filter_params = [yaml.safe_load(file)]
+
+print(filter_params)
+
 config = {
     'common': {
         'default_n_jobs': int(threads)

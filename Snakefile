@@ -925,6 +925,9 @@ rule score:
     shell: '''bash pipeline/cefilter/score.sh \
                 "{input.model}" "{input.vocab}" "{input.src_corpus}" "{input.trg_corpus}" "{output}" >> {log} 2>&1'''
 
+if opusmt_backward:
+    ruleorder: add_lang_tag_corpus_src_for_student > ce_filter
+
 rule ce_filter:
     message: "Cross entropy filtering"
     log: f"{log_dir}/ce_filter_{{langpair}}.log"
@@ -946,7 +949,7 @@ rule add_lang_tag_corpus_src_for_student:
     conda: "envs/base.yml"
     threads: workflow.cores
     input: f"{train_student_dir}/corpus.source.gz"
-    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz", f"{filtered}/{{langpair}}/corpus.target.gz"
+    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz"
     params: prefix=f"{train_student_dir}/corpus",
             trg_three_letter=lambda wildcards: Language.get(wildcards.langpair.split('-')[1]).to_alpha3(),
             suffix="source",
