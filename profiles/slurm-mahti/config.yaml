@@ -14,8 +14,8 @@ keep-going: false
 default-resources: ["mem_mb=64000"]
 use-singularity: true
 use-conda: true
-resources: gpu=1
-cores: 8
+resources: gpu=128
+cores: 40
 cache: false
 reason: true
 # if CPU nodes don't have access to cuda dirs, use

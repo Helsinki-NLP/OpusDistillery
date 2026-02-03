@@ -38,7 +38,7 @@ cd "$(dirname "${0}")"
   -i "${input}" \
   -o "${output}" \
   --log "${input}.log" \
-  --n-best \
+  --n-best --mini-batch 128 \
   -d ${GPUS} \
   -w "${WORKSPACE}"
 

@@ -5,8 +5,8 @@
 ###
 
 experiment:
-  dirname: hf
-  name: nllb
+  dirname: nllb
+  name: test
   langpairs:
     - en-et
 
@@ -21,6 +21,8 @@ experiment:
     lang_tags:
       en: eng_Latn
       et: est_Latn
+
+  spm-vocab-size: 2880
 
 marian-args:
   training-student:

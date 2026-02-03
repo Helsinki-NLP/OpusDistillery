@@ -2,6 +2,6 @@
 single-gpu-partition: gputest
 multi-gpu-partition: gputest
 cpu-partition: test
-cpu-account: project_2007095
-gpu-account: project_2007095
+cpu-account: project_2005815
+gpu-account: project_2005815
 time-limit: "00:15:00"

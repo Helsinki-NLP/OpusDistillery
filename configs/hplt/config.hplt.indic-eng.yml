@@ -1,0 +1,57 @@
+####
+# Example of a production config
+# Change language pair, experiment name, datasets and other settings if needed
+# Training low resource languages might require more tuning of pipeline/training/configs
+###
+
+experiment:
+  dirname: hplt
+  name: indic-eng
+  langpairs:
+    - bn-en
+    - gu-en
+    - hi-en
+    - kn-en
+    - ml-en
+    - mr-en
+    - ne-en
+    - ta-en
+    - te-en
+    - ur-en
+
+  huggingface:
+    modelname: "ai4bharat/indictrans2-indic-en-1B"
+    modelclass: "transformers.AutoModelForSeq2SeqLM"
+    lang_info: False # you need to check if the tokenizer requires src and target langs or not
+    lang_tags:
+      en: eng_Latn
+      bn: ben_Beng
+      gu: guj_Gujr
+      hi: hin_Deva
+      kn: kan_Knda
+      ml: mal_Mlym
+      mr: mar_Deva
+      ne: npi_Deva
+      ta: tam_Taml
+      te: tel_Telu
+      ur: urd_Arab
+    ct2: True
+    batch_size: 8192
+  
+  #URL to the OPUS-MT model to use as the backward model
+  opusmt-backward: ""  
+  
+  split-length: 10000000
+  
+  best-model: perplexity
+
+  opusfilter:
+    config: default
+
+datasets:
+  train:
+    - tc_Tatoeba-Challenge-v2023-09-26
+  devtest:
+    - flores_dev
+  test:
+    - flores_devtest
