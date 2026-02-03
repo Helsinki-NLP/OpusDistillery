@@ -21,13 +21,14 @@ prompt=$9
 langtags=${10}
 config=${11}
 batch_size=${12}
-logfile=${13}
+token=${13}
+logfile=${14}
 
 echo "### Translation started"
 
 accelerate launch --mixed_precision="fp16" pipeline/translate/translate_hf.py \
             "${filein}" "${fileout}" "${modelname}" "${modeldir}" "${src_lang}" "${trg_lang}" \
-            "${modelclass}" "${langinfo}" "${prompt}" "${langtags}" "${config}" "${batch_size}" "${logfile}" >> "${logfile}.hf" 2>&1
+            "${modelclass}" "${langinfo}" "${prompt}" "${langtags}" "${config}" "${batch_size}" "${token}" "${logfile}" >> "${logfile}.hf" 2>&1
         
 echo "### Translations done!"
 

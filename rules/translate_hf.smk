@@ -23,11 +23,12 @@ rule translate_corpus_hf:
             prompt={config["prompt"]},
             langtags=config["langtags"],
             decoder_config=config["decoder_config"],
-            batch_size=config["batch_size"]
+            batch_size=config["batch_size"],
+            token=config["token"]
     shell: '''
         bash pipeline/translate/translate_hf.sh \
             "{input.file}" "{output.file}" "{params.teacher}" "{params.model_dir}" "{params.src}" "{params.trg}" \
-            "{params.modelclass}" "{params.langinfo}" "{params.prompt}" '{params.langtags}' "{params.decoder_config}" "{params.batch_size}" {log} >> {log} 2>&1
+            "{params.modelclass}" "{params.langinfo}" "{params.prompt}" '{params.langtags}' "{params.decoder_config}" "{params.batch_size}" "{params.token}" {log} >> {log} 2>&1
         '''
 
 rule translate_corpus_hf_ct2:

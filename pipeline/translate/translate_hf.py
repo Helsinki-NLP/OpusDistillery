@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument('langtags',  type=str, help="Language tag mapping specific to the model")
     parser.add_argument('config',  type=str, help="Specific configuration for decoding")
     parser.add_argument('batchsize',  type=str, help="Batch size for decoding. Should be small for large models.")
+    parser.add_argument('token',  type=str, help="HuggingFace token for gated models.")
     parser.add_argument('logfile',  type=str, help="Logfile where prints will be flushed.")
     return parser.parse_args()
 
@@ -102,13 +103,15 @@ def preprocess_in_batches(text, batch_size, src_lang, tgt_lang, processor, logfi
 def main():
     args = parse_args()
     os.environ['HF_HOME'] = args.modeldir
-    logfile = open(args.logfile, "w")
+    logfile = open(args.logfile, "a")
+    token = args.token
 
     print(f"Downloading model to... {os.environ['HF_HOME']}", file=logfile, flush=True)
     
     # Tokenization needs to be done before Accelerator is used
     print(f"Translating {args.filein} from {args.src} to {args.trg} with {args.modelname}...", file=logfile, flush=True)
-
+    if token:
+        print(f"HuggingFace Token: {args.token}", file=logfile, flush=True)
     print("PyTorch version:", torch.__version__, file=logfile, flush=True)
     print("CUDA available:", torch.cuda.is_available(), file=logfile, flush=True)
     print("GPUs available:", torch.cuda.device_count(), file=logfile, flush=True)
@@ -125,7 +128,7 @@ def main():
     model_class = getattr(module, class_name)
     
     print("Loading model...", file=logfile, flush=True)
-    model = model_class.from_pretrained(model_name, trust_remote_code=True)
+    model = model_class.from_pretrained(model_name, trust_remote_code=True, torch_dtype=torch.float16, token=token) # attn_implementation="flash_attention_2"
     print("Model loaded!", file=logfile, flush=True)
     
     # Mapping target languages
@@ -135,12 +138,12 @@ def main():
     print(f"Loading tokenizer...", file=logfile, flush=True)
     if args.langinfo in ["True", "true", "1"]:
         print(f"Loading tokenizer with language tags: {src_lang} and {tgt_lang}", file=logfile, flush=True)
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, src_lang=src_lang, tgt_lang=tgt_lang, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, src_lang=src_lang, tgt_lang=tgt_lang, use_fast=True, token=token)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=True, token=token)
     print(f"Tokenizer loaded!", file=logfile, flush=True)
 
-    num_return_sequences = 1
+    num_return_sequences = 8
     batch_size = ast.literal_eval(args.batchsize)
 
     if args.config == "default":
@@ -194,8 +197,6 @@ def main():
         collate_fn=lambda batch: collate_fn(batch, tokenizer, max_length, logfile, tokenization_tracker)
     )
 
-    # Track the progress
-    total_batches = len(dataloader)
 
     print(f"Total batches: {total_batches}", file=logfile, flush=True)
 
@@ -231,7 +232,7 @@ def main():
             with torch.no_grad():
                 if "indictrans" in model_name:
                     # Generate output
-                    translated_batch = model.module.generate(
+                    translated_batch = model.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
@@ -246,7 +247,7 @@ def main():
                         translated_batch = ip.postprocess_batch(translated_batch, lang=tgt_lang)
                 elif 'nllb' in model_name:
 		            # For nllb, we need to add the target language token
-                    translated_batch = model.module.generate(
+                    translated_batch = model.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
