@@ -18,8 +18,8 @@ This section describes how to set up the OpusDistillery pipeline locally, as wel
 
 0. Clone the repo:
 ``` 
-git clone https://github.com/mozilla/firefox-translations-training.git
-cd firefox-translations-training
+git clone https://github.com/Helsinki-NLP/OpusDistillery/
+cd OpusDistillery
 ```
 1. Choose a [Snakemake profile](https://github.com/Snakemake-Profiles) from `profiles/` or create a new one 
 2. Adjust paths in the `Makefile` if needed and set `PROFILE` variable to the name of your profile
@@ -49,6 +49,12 @@ make snakemake
 
 ```
 make git-modules
+```
+
+11. Install requirements:
+```
+source ../mambaforge/etc/profile.d/conda.sh ; conda activate ; conda activate snakemake
+pip install -r requirements.txt 
 ```
 
 You are all set!
