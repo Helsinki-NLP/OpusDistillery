@@ -9,6 +9,7 @@ from langcodes import *
 min_version("6.6.1")
 
 ## Started modularization work - 10.06.2024
+print("CONFIG =", config)
 
 # include statement will include the code in the file as is, into the same variable scope. This is why the configuration (specifying directories etc.) is done with include, those configuration settings need to be in the global scope in the main Snakefile (but it's cleaner to have them in a separate file to reduce clutter). 
 include: "rules/configuration.smk" 
@@ -949,7 +950,7 @@ rule add_lang_tag_corpus_src_for_student:
     conda: "envs/base.yml"
     threads: workflow.cores
     input: f"{train_student_dir}/corpus.source.gz"
-    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz"
+    output: f"{filtered}/{{langpair}}/corpus.source.langtagged.gz", f"{filtered}/{{langpair}}/corpus.target.gz"
     params: prefix=f"{train_student_dir}/corpus",
             trg_three_letter=lambda wildcards: Language.get(wildcards.langpair.split('-')[1]).to_alpha3(),
             suffix="source",
