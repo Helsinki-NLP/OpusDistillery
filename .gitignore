@@ -157,3 +157,6 @@ dag.txt
 slurm-*.out
 test*
 data/
+debug/
+modules/
+hub/
