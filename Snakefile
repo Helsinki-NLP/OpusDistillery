@@ -730,7 +730,8 @@ if huggingface:
         "decoder_config": hf_config,
         "batch_size": hf_batchsize,
         "gpus_num": gpus_num,
-        "ct2": hf_ct2}
+        "ct2": hf_ct2,
+        "token": hf_token}
 
     module translate_hf:
         snakefile: "rules/translate_hf.smk"

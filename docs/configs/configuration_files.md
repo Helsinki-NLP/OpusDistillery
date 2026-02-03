@@ -131,6 +131,15 @@ For models that use language tags, additional parameters are required:
       et: est_Latn
 ```
 
+For gated models, you can provide your HF token as follows:
+
+```yaml
+  huggingface:
+    modelname: "facebook/nllb-200-distilled-600M"
+    modelclass: "transformers.AutoModelForSeq2SeqLM"
+    token: "<your-hf-token-here>"
+```
+
 Finally, for models requiring a prompt, you can define it like this:
 
 ```yaml
