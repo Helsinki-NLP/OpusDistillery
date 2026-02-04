@@ -4,15 +4,16 @@ Stage: spython-base
 
 %files
 pipeline/setup/install-deps.sh install-deps.sh
-envs/base.yml /conda-envs/5b9b6359aeb7a8cce83d20a6a4869b56/environment.yaml
+envs/base.yml /conda-envs/d6405a0f7a594ca32f87180568077d95/environment.yaml
 envs/bicleaner-ai-lumi.yml /conda-envs/6dc32b6f0731acf817ada219622a98b8/environment.yaml
 envs/bicleaner-ai.yml /conda-envs/04b8248cb528961ad452c73dd0a7c8b6/environment.yaml
 envs/bicleaner.yml /conda-envs/a4f700aa6ff0256dcd9321b536a081ac/environment.yaml
 envs/corpus.yml /conda-envs/2e8e4401e9abbca04941f823d00fe74a/environment.yaml
+envs/hf.yml /conda-envs/09b4343a9c71b49bf9705475efd255a5/environment.yaml
 envs/tensorboard.yml /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221/environment.yaml
 %labels
 io.github.snakemake.containerized="true"
-io.github.snakemake.conda_env_hash="64ea2eddccf85926495d095ffb5b21f7f31a5ec81a124706d5a79c5a3382bbe7"
+io.github.snakemake.conda_env_hash="056fd05345009c3a35721541dad9e5f505e6b39b45d7541ee0fa539f811b4737"
 %post
 
 # Remove this if not in Finland, or change to closer mirror
@@ -28,7 +29,7 @@ bash install-deps.sh
 
 # Conda environment:
 #   source: envs/base.yml
-#   prefix: /conda-envs/5b9b6359aeb7a8cce83d20a6a4869b56
+#   prefix: /conda-envs/d6405a0f7a594ca32f87180568077d95
 #   name: bergamot-training
 #   channels:
 #     - conda-forge
@@ -42,11 +43,13 @@ bash install-deps.sh
 #       - mtdata==0.4.0
 #       - fasttext==0.9.2
 #       - regex==2019.8.19
-#       - sacremoses==0.0.43
+#       - sacremoses==0.1.0
 #       - langcodes==3.3.0
 #       - opusfilter==3.0.0rc2
-#       - opustrainer==0.2 #sacremoses 35 pyyaml 6.0
-mkdir -p /conda-envs/5b9b6359aeb7a8cce83d20a6a4869b56
+#       - git+https://github.com/hplt-project/opustrainer.git#egg=opustrainer
+#       - unbabel-comet==2.2.2
+#       - eflomal==2.0.0
+mkdir -p /conda-envs/d6405a0f7a594ca32f87180568077d95
 
 # Conda environment:
 #   source: envs/bicleaner-ai-lumi.yml
@@ -115,6 +118,33 @@ mkdir -p /conda-envs/a4f700aa6ff0256dcd9321b536a081ac
 mkdir -p /conda-envs/2e8e4401e9abbca04941f823d00fe74a
 
 # Conda environment:
+#   source: envs/hf.yml
+#   prefix: /conda-envs/09b4343a9c71b49bf9705475efd255a5
+#   name: huggingface
+#   channels:
+#     - conda-forge
+#     - defaults
+#   dependencies:
+#     - python=3.9
+#     - pip==21.2.2
+#     - cmake=3.21.1
+#     - numpy<2.0.0
+#     - pip:
+#       - --extra-index-url=https://download.pytorch.org/whl/rocm5.3
+#       - --pre
+#       - torch==2.3.1
+#       - torchvision==0.18.1
+#       - torchaudio==2.3.1
+#       - transformers==4.38.2
+#       - sentencepiece==0.1.99
+#       - accelerate==0.31.0
+#       - git+https://github.com/VarunGumma/IndicTransToolkit
+#       - protobuf==5.28.2
+#       - tqdm==4.66.6
+#       - ctranslate2==4.5.0
+mkdir -p /conda-envs/09b4343a9c71b49bf9705475efd255a5
+
+# Conda environment:
 #   source: envs/tensorboard.yml
 #   prefix: /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221
 #   name: tensorboard
@@ -134,11 +164,12 @@ mkdir -p /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221
 
 # Step 2: Generate conda environments
 
-mamba env create --prefix /conda-envs/5b9b6359aeb7a8cce83d20a6a4869b56 --file /conda-envs/5b9b6359aeb7a8cce83d20a6a4869b56/environment.yaml && \
+mamba env create --prefix /conda-envs/d6405a0f7a594ca32f87180568077d95 --file /conda-envs/d6405a0f7a594ca32f87180568077d95/environment.yaml && \
 mamba env create --prefix /conda-envs/6dc32b6f0731acf817ada219622a98b8 --file /conda-envs/6dc32b6f0731acf817ada219622a98b8/environment.yaml && \
 mamba env create --prefix /conda-envs/04b8248cb528961ad452c73dd0a7c8b6 --file /conda-envs/04b8248cb528961ad452c73dd0a7c8b6/environment.yaml && \
 mamba env create --prefix /conda-envs/a4f700aa6ff0256dcd9321b536a081ac --file /conda-envs/a4f700aa6ff0256dcd9321b536a081ac/environment.yaml && \
 mamba env create --prefix /conda-envs/2e8e4401e9abbca04941f823d00fe74a --file /conda-envs/2e8e4401e9abbca04941f823d00fe74a/environment.yaml && \
+mamba env create --prefix /conda-envs/09b4343a9c71b49bf9705475efd255a5 --file /conda-envs/09b4343a9c71b49bf9705475efd255a5/environment.yaml && \
 mamba env create --prefix /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221 --file /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221/environment.yaml && \
 mamba clean --all -y
 

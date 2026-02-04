@@ -1,14 +1,37 @@
-from os import listdir
-def get_envs(wildcards):
-   return [x.replace(".yml",".done") for x in os.listdir("envs") if x.endswith(".yml")] 
+# InstallSnakemakeEnvs
+import os
+import re
 
-container: 'Ftt.sif'
+container: "Ftt.sif"
+
+ENV_DIR = "envs"
+
+def env_ymls():
+    return sorted([f for f in os.listdir(ENV_DIR) if f.endswith(".yml")])
+
+def done_path(yml_name: str) -> str:
+    # Keep the .done files next to the yaml to avoid clutter
+    return os.path.join(ENV_DIR, yml_name.replace(".yml", ".done"))
+
+def rule_safe(name: str) -> str:
+    # Snakemake rule names must be identifiers-ish
+    base = name.replace(".yml", "")
+    base = re.sub(r"[^A-Za-z0-9_]+", "_", base)
+    return f"make_env_{base}"
+
+YMLS = env_ymls()
 
 rule all:
-    input: get_envs
+    input:
+        [done_path(y) for y in YMLS]
 
-rule make_envs:
-    conda: 'envs/{env}.yml'
-    output: '{env}.done'
-    shell: f'touch {{output}}'
-
+# IMPORTANT: create one rule per env with a STATIC conda path (no wildcards)
+for y in YMLS:
+    rule:
+        name: rule_safe(y)
+        conda:
+            os.path.join(ENV_DIR, y)   # <-- static per rule
+        output:
+            done_path(y)
+        shell:
+            "touch {output}"
