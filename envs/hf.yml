@@ -3,13 +3,11 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.9
-  - pip==21.2.2
+  - python=3.10
+  - pip>=23
   - cmake=3.21.1
   - numpy<2.0.0
   - pip:
-    - --extra-index-url=https://download.pytorch.org/whl/rocm5.3
-    - --pre
     - torch==2.3.1
     - torchvision==0.18.1
     - torchaudio==2.3.1
