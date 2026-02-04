@@ -10,9 +10,9 @@ dependencies:
   - pip:
     - --extra-index-url=https://download.pytorch.org/whl/rocm5.3
     - --pre
-    - torch>2.2.1
-    - torchvision>0.15.2
-    - torchaudio>0.13.0
+    - torch==2.3.1
+    - torchvision==0.18.1
+    - torchaudio==2.3.1
     - transformers==4.38.2
     - sentencepiece==0.1.99
     - accelerate==0.31.0
