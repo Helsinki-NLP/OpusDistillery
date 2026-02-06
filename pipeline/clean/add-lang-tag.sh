@@ -42,7 +42,7 @@ fi
 if [ $model_dir == "target" ]; then # We also need to return a target file
     echo "Checking if target language filtered file exists..."
     if [ "$file" != "$outfile" ]; then
-        echo "It doesn't exist, let's copy it from the training directory" >> ${log} 2>&1
+        echo "It doesn't exist, let's copy it from the training directory"
         ln -s $file.target.gz $outfile.target.gz;
     else
         touch $outfile.target.gz

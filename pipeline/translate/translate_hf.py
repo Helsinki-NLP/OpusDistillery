@@ -203,6 +203,11 @@ def main():
     dataloader = accelerator.prepare(dataloader)  # Prepare dataloader for distributed inference
     model = accelerator.prepare(model)  # Prepare model for distributed inference
 
+    model.eval()
+
+    gen_model = accelerator.unwrap_model(model)   # works whether wrapped or not
+    torch.set_grad_enabled(False)
+    
     print("Starting translations...", file=logfile, flush=True)
 
     # Create a progress tracker for translation progress
@@ -225,14 +230,14 @@ def main():
             progress_message = f"Translation progress: {current}/{total} batches ({percentage:.2f}%)"
             print(progress_message, file=logfile, flush=True)  # Print to log file
 
-            sentence_ids = batch.pop('sentence_id').tolist()  # Extract sentence IDs from the batch
+            sentence_ids = batch.pop('sentence_id').detach().cpu().tolist()  # Extract sentence IDs from the batch
 
             augmented_sentence_ids = [x for x in sentence_ids for _ in range(num_return_sequences)]
             
             with torch.no_grad():
                 if "indictrans" in model_name:
                     # Generate output
-                    translated_batch = model.generate(
+                    translated_batch = gen_model.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
@@ -247,7 +252,7 @@ def main():
                         translated_batch = ip.postprocess_batch(translated_batch, lang=tgt_lang)
                 elif 'nllb' in model_name:
 		            # For nllb, we need to add the target language token
-                    translated_batch = model.generate(
+                    translated_batch = gen_model.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
@@ -260,7 +265,7 @@ def main():
 		
                 else:
                     # Generate output
-                    translated_batch = model.module.generate(
+                    translated_batch = gen_model.generate(
                         **batch,
                         num_return_sequences=num_return_sequences,
                         num_beams=num_return_sequences,
