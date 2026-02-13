@@ -27,17 +27,32 @@ mkdir -p "${dir}"
 corpus_src="${corpus_prefix}.${SRC}.gz"
 corpus_trg="${corpus_prefix}.${TRG}.gz"
 
-test -s "${dir}/cleaned_empty_lines" ||
-  echo "### Removing empty target lines"
-  paste <(pigz -dc "${corpus_src}") <(pigz -dc "${corpus_trg}") | sed 's/\t/ ||| /' >"${dir}/corpus"
-  awk -F ' \\|\\|\\| ' '$1!="" && $2!=""' "${dir}/corpus" > "${dir}/corpus_dedup"
+test -s "${dir}/cleaned_empty_lines" || {
+  echo "### Removing empty target lines + escaping |||"
+
+  paste <(pigz -dc "${corpus_src}" | tr -d '\r') \
+        <(pigz -dc "${corpus_trg}" | tr -d '\r') |
+  awk -F $'\t' -v OFS=$'\t' '
+    {
+      # drop whitespace-only src/trg
+      if ($1 !~ /[^[:space:]]/ || $2 !~ /[^[:space:]]/) next
+
+      # escape any occurrence of ||| inside either sentence
+      gsub(/\|\|\|/, "<PIPE3>", $1)
+      gsub(/\|\|\|/, "<PIPE3>", $2)
+
+      print
+    }
+  ' > "${dir}/corpus_dedup"
 
   echo "### Splitting corpus back into source and target files and overwriting source and target files"
-  awk -F' \\|\\|\\| ' '{print $1}' "${dir}/corpus_dedup" | pigz -c > "${corpus_src}"
-  awk -F' \\|\\|\\| ' '{print $2}' "${dir}/corpus_dedup" | pigz -c > "${corpus_trg}"
-  rm "${dir}/corpus"
-  rm "${dir}/corpus_dedup"
-  touch "${dir}/cleaned_empty_lines"
+  cut -f1 "${dir}/corpus_dedup" | pigz -c > "${corpus_src}"
+  cut -f2 "${dir}/corpus_dedup" | pigz -c > "${corpus_trg}"
+
+  rm -f "${dir}/corpus_dedup"
+  printf 'ok\n' > "${dir}/cleaned_empty_lines"
+}
+
 
 echo "### Subword segmentation with SentencePiece"
 test -s "${dir}/corpus.spm.${SRC}.gz" ||
@@ -50,13 +65,13 @@ test -s "${dir}/corpus.spm.${TRG}.gz" ||
   pigz >"${dir}/corpus.spm.${TRG}.gz"
 
 echo "### Creating merged corpus"
-test -s "${output_dir}/corpus.aln.gz" || test -s "${dir}/corpus" ||
+test -s "${output_dir}/corpus.aln.gz" || test -s "${dir}/corpus_spm" ||
   paste <(pigz -dc "${dir}/corpus.spm.${SRC}.gz") <(pigz -dc "${dir}/corpus.spm.${TRG}.gz") |
-  sed 's/\t/ ||| /' >"${dir}/corpus"
+  sed 's/\t/ ||| /' >"${dir}/corpus_spm"
 
 echo "### Training alignments"
 test -s "${output_dir}/corpus.aln.gz" || test -s "${dir}/align.s2t" || test -s "${dir}/align.t2s" ||
-  "eflomal-align" -i "${dir}/corpus" -f "${dir}/align.s2t" -r "${dir}/align.t2s" -m 3
+  "eflomal-align" -i "${dir}/corpus_spm" -f "${dir}/align.s2t" -r "${dir}/align.t2s" -m 3
   
 echo "### Symmetrizing alignments"
 test -s "${output_dir}/corpus.aln.gz" ||
