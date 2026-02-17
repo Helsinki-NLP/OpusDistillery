@@ -237,6 +237,8 @@ else:
 
 # huggingface
 
+hf_token = config['experiment'].get('hf_token','False')
+
 if "huggingface" in config["experiment"]:
     hf_teacher = config['experiment']['huggingface'].get('modelname')
     hf_modelclass = config['experiment']['huggingface'].get('modelclass')
@@ -246,7 +248,6 @@ if "huggingface" in config["experiment"]:
     hf_batchsize = config['experiment']['huggingface'].get('batch_size','8')
     hf_langtags = json.dumps(config["experiment"]["huggingface"].get("lang_tags",dict()))
     hf_ct2 = config['experiment']['huggingface'].get('ct2','False')
-    hf_token = config['experiment']['huggingface'].get('token','False')
     huggingface = True
     train_student_dir = f"{merged}/{{langpair}}"
 else:

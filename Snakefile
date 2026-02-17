@@ -211,8 +211,9 @@ rule download_corpus:
     wildcard_constraints: kind="corpus|devset|eval"
     output: multiext(f"{original}/{{langpair}}/{{kind}}/{{dataset}}", ".source.gz", ".target.gz")
     params: prefix=f"{original}/{{langpair}}/{{kind}}/{{dataset}}",
-            dataset="{dataset}", src_lang=lambda wildcards: wildcards.langpair.split('-')[0], trg_lang=lambda wildcards: wildcards.langpair.split('-')[1]
-    shell: 'bash pipeline/data/download-corpus.sh "{params.dataset}" "{params.prefix}" "{params.src_lang}" "{params.trg_lang}"  >> {log} 2>&1'
+            dataset="{dataset}", src_lang=lambda wildcards: wildcards.langpair.split('-')[0], trg_lang=lambda wildcards: wildcards.langpair.split('-')[1],
+            token={hf_token}
+    shell: 'bash pipeline/data/download-corpus.sh "{params.dataset}" "{params.prefix}" "{params.src_lang}" "{params.trg_lang}"  "{params.token}" >> {log} 2>&1'
 
 rule download_mono: # TO DO
     message: "Downloading monolingual dataset"
