@@ -8,13 +8,14 @@ dependencies:
   - cmake=3.21.1
   - numpy<2.0.0
   - pip:
-    - torch==2.3.1
-    - torchvision==0.18.1
-    - torchaudio==2.3.1
-    - transformers==4.38.2
-    - sentencepiece==0.1.99
+    - torch==2.4.*
+    - torchvision==0.19.*
+    - torchaudio==2.4.*
+    - transformers>=4.38.2
+    - sentencepiece==0.1.99 
     - accelerate==0.31.0
     - git+https://github.com/VarunGumma/IndicTransToolkit
     - protobuf==5.28.2
     - tqdm==4.66.6
     - ctranslate2==4.5.0
+    - huggingface_hub>=1.4.1

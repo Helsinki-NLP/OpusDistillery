@@ -140,7 +140,7 @@ For gated models, you can provide your HF token as follows:
     token: "<your-hf-token-here>"
 ```
 
-Finally, for models requiring a prompt, you can define it like this:
+Finally, for models requiring a prompt, you can define it like this: (THIS HAS NOT BEEN TESTED)
 
 ```yaml
   huggingface:
@@ -269,3 +269,4 @@ The final student model is exported in the Bergamot format, which uses shortlist
 * `spm-sample-size`: Sample size for training the student’s SPM vocabulary.
 * `spm-vocab-size`: Vocabulary size for training the student’s SPM vocabulary.
 * `student-prefix`: To train multiple students with the same data, add a prefix to the student name, which will allow multiple students to be trained under the same directory structure with the same data. More details on the directory structure can be found [here](../pipeline/dir_structure.md).
+* `push-to-hub`: this will train a student model without alignment and push it to HF. See an example [here](../../configs/config.hplt.kor-eng.yml)

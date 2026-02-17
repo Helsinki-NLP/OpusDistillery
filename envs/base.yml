@@ -17,4 +17,3 @@ dependencies:
     - git+https://github.com/hplt-project/opustrainer.git#egg=opustrainer
     - unbabel-comet==2.2.2
     - eflomal==2.0.0
-    - datasets==4.5.0

@@ -60,6 +60,19 @@ if export_model == "no":
     
     ruleorder: train_student_no_alignment > train_student
 
+elif push_to_hf: # The student won't be exported
+    if student_prefix:
+        hf_dir = f"{models_dir}/{student_prefix}_student_hf"
+    else:
+        hf_dir = f"{models_dir}/student_hf"
+    results = [
+        *expand(f"{eval_student_dir}/{{langpair}}/{{dataset}}.metrics",
+                dataset=eval_datasets, langpair=langpairs),
+        f"{hf_dir}/generation_config.json",
+    ]
+
+    ruleorder: train_student_no_alignment > train_student
+
 else:
     ruleorder: train_student > train_student_no_alignment
 
@@ -1176,6 +1189,28 @@ rule export:
     shell:
         'bash pipeline/quantize/export.sh "{speed_dir}" "{input.shortlist}" "{input.vocab}" "{exported_dir}" {dirname} >> {log} 2>&1'
 
+## push model to HF
+rule push_model_to_hf:
+    message: "Converting model to Pytorch and pushing it to HF"
+    log:
+        f"{log_dir}/convert_and_push_to_hf.log"
+    conda:
+        "envs/hf.yml"
+    threads: 1
+    input:
+        model=rules.train_student_no_alignment.output.model,
+        vocab=vocab_path
+    output:
+        config=f"{hf_dir}/generation_config.json"
+    params:
+        output_dir=hf_dir,
+        token=hf_token
+    shell:
+        r'''
+        bash pipeline/hf/convert_and_push.sh \
+        "{input.model}" "{params.output_dir}" "{params.token}" \
+        >> "{log}" 2>&1
+        '''
 
 ### evaluation
 

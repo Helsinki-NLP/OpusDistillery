@@ -8,4 +8,5 @@ dependencies:
   - pip:
     - sacrebleu==2.0.0
     - mtdata==0.3.2
-    - requests==2.26.0
+    - datasets>=2.18,<5
+    - requests>=2.31

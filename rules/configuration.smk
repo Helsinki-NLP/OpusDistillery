@@ -119,7 +119,7 @@ filtered = f'{data_dir}/filtered'
 align_dir = f"{data_dir}/alignment"
 
 # models
-student_prefix = config['experiment'].get('student-prefix')
+student_prefix = config['experiment'].get('student-prefix','')
 models_dir = f"{data_root_dir}/models/{dirname}/{experiment}"
 # Teacher dir
 teacher_base_dir = f"{models_dir}/teacher-base"
@@ -238,6 +238,8 @@ else:
 # huggingface
 
 hf_token = config['experiment'].get('hf_token','False')
+
+push_to_hf = bool(config.get("experiment", {}).get("push-to-hf", False))
 
 if "huggingface" in config["experiment"]:
     hf_teacher = config['experiment']['huggingface'].get('modelname')

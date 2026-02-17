@@ -1,0 +1,42 @@
+####
+# Example of a production config
+# Change language pair, experiment name, datasets and other settings if needed
+# Training low resource languages might require more tuning of pipeline/training/configs
+###
+
+experiment:
+  dirname: test
+  name: kor-eng
+  langpairs:
+    - ko-en
+
+  #URL to the OPUS-MT model to use as the teacher
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/kor-eng/opusTCv20210807-sepvoc_transformer-big_2022-07-28.zip"
+  
+  # Specify if the teacher and the student are many2one
+  one2many-teacher: False
+  one2many-student: False
+
+  #URL to the OPUS-MT model to use as the backward model
+  opusmt-backward: ""
+
+  push-to-hf: True
+  hf_token: <hf-token>
+
+  teacher-ensemble: 1
+  
+  split-length: 20000000
+  spm-sample-size: 2000000
+
+  best-model: perplexity
+
+  opusfilter:
+    config: default
+
+datasets:
+  train:
+    - tc_Tatoeba-Challenge-v2023-09-26
+  devtest:
+    - flores_dev
+  test:
+    - flores_devtest
