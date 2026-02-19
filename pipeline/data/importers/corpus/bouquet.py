@@ -117,7 +117,10 @@ def main() -> None:
 
     pair = args.pair[0]
     src, tgt = pair.split("-")
-
+    split = args.split
+    if split == "devset":
+        split="dev"
+        
     print("Loading Bouquet from HF…")
 
     # ---- load SRC config ----
@@ -127,8 +130,8 @@ def main() -> None:
         write_empty_outputs(args.out_src, args.out_tgt)
         return
 
-    if args.split not in ds_src:
-        print(f"WARNING: Split '{args.split}' not in src language '{src}' → empty files")
+    if split not in ds_src:
+        print(f"WARNING: Split '{split}' not in src language '{src}' → empty files")
         write_empty_outputs(args.out_src, args.out_tgt)
         return
 
@@ -139,15 +142,15 @@ def main() -> None:
         write_empty_outputs(args.out_src, args.out_tgt)
         return
 
-    if args.split not in ds_tgt:
-        print(f"WARNING: Split '{args.split}' not in tgt language '{tgt}' → empty files")
+    if split not in ds_tgt:
+        print(f"WARNING: Split '{split}' not in tgt language '{tgt}' → empty files")
         write_empty_outputs(args.out_src, args.out_tgt)
         return
 
-    print(f"Processing {args.split} {pair} (sentence_level)")
+    print(f"Processing {split} {pair} (sentence_level)")
 
-    data_src = ds_src[args.split]
-    data_tgt = ds_tgt[args.split]
+    data_src = ds_src[split]
+    data_tgt = ds_tgt[split]
 
     src_paras = collect_sentence_paragraphs(data_src, src)
     tgt_paras = collect_sentence_paragraphs(data_tgt, tgt)
