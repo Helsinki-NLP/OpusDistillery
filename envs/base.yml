@@ -8,7 +8,7 @@ dependencies:
   - pip=21.2.2
   - pip:
     - sacrebleu==2.0.0
-    - mtdata==0.4.0
+    - mtdata
     - fasttext==0.9.2
     - regex==2019.8.19
     - sacremoses==0.1.0
@@ -17,3 +17,4 @@ dependencies:
     - git+https://github.com/hplt-project/opustrainer.git#egg=opustrainer
     - unbabel-comet==2.2.2
     - eflomal==2.0.0
+    - datasets==4.5.0
