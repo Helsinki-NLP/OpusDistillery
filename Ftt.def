@@ -4,16 +4,16 @@ Stage: spython-base
 
 %files
 pipeline/setup/install-deps.sh install-deps.sh
-envs/base.yml /conda-envs/d6405a0f7a594ca32f87180568077d95/environment.yaml
-envs/bicleaner-ai-lumi.yml /conda-envs/6dc32b6f0731acf817ada219622a98b8/environment.yaml
+envs/base.yml /conda-envs/4f08ae7a76a48176f0c88460cad427c0/environment.yaml
+envs/bicleaner-ai-lumi.yml /conda-envs/07e7d3181eda50189aa149e237b63f57/environment.yaml
 envs/bicleaner-ai.yml /conda-envs/04b8248cb528961ad452c73dd0a7c8b6/environment.yaml
 envs/bicleaner.yml /conda-envs/a4f700aa6ff0256dcd9321b536a081ac/environment.yaml
-envs/corpus.yml /conda-envs/2e8e4401e9abbca04941f823d00fe74a/environment.yaml
-envs/hf.yml /conda-envs/309accd08a3101887231a499217d2f47/environment.yaml
+envs/corpus.yml /conda-envs/412b26c5be92a818771be78315fefb21/environment.yaml
+envs/hf.yml /conda-envs/e61af7fc5d4c1ae0eb95a4730a0c66e5/environment.yaml
 envs/tensorboard.yml /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221/environment.yaml
 %labels
 io.github.snakemake.containerized="true"
-io.github.snakemake.conda_env_hash="4cc1b8e1c04a68b861c46b1b136dbdb154e6771c983484f55882000033566b85"
+io.github.snakemake.conda_env_hash="03fba87277e969fbf121e3e3fe15507ffd7a5822cd140ff406a2442feda3945a"
 %post
 
 # Remove this if not in Finland, or change to closer mirror
@@ -29,7 +29,7 @@ bash install-deps.sh
 
 # Conda environment:
 #   source: envs/base.yml
-#   prefix: /conda-envs/d6405a0f7a594ca32f87180568077d95
+#   prefix: /conda-envs/4f08ae7a76a48176f0c88460cad427c0
 #   name: bergamot-training
 #   channels:
 #     - conda-forge
@@ -40,7 +40,7 @@ bash install-deps.sh
 #     - pip=21.2.2
 #     - pip:
 #       - sacrebleu==2.0.0
-#       - mtdata==0.4.0
+#       - mtdata
 #       - fasttext==0.9.2
 #       - regex==2019.8.19
 #       - sacremoses==0.1.0
@@ -49,23 +49,24 @@ bash install-deps.sh
 #       - git+https://github.com/hplt-project/opustrainer.git#egg=opustrainer
 #       - unbabel-comet==2.2.2
 #       - eflomal==2.0.0
-mkdir -p /conda-envs/d6405a0f7a594ca32f87180568077d95
+#       - datasets==4.5.0
+mkdir -p /conda-envs/4f08ae7a76a48176f0c88460cad427c0
 
 # Conda environment:
 #   source: envs/bicleaner-ai-lumi.yml
-#   prefix: /conda-envs/6dc32b6f0731acf817ada219622a98b8
+#   prefix: /conda-envs/07e7d3181eda50189aa149e237b63f57
 #   name: bicleaner-ai
 #   channels:
 #     - conda-forge
 #     - defaults
 #   dependencies:
 #     - python=3.9
-#     - pip==21.2.2
+#     - pip
 #     - cmake=3.21.1
 #     - pip:
 #       - bicleaner-ai==2.2.1
 #       - tensorflow-rocm==2.10.0.520
-mkdir -p /conda-envs/6dc32b6f0731acf817ada219622a98b8
+mkdir -p /conda-envs/07e7d3181eda50189aa149e237b63f57
 
 # Conda environment:
 #   source: envs/bicleaner-ai.yml
@@ -103,7 +104,7 @@ mkdir -p /conda-envs/a4f700aa6ff0256dcd9321b536a081ac
 
 # Conda environment:
 #   source: envs/corpus.yml
-#   prefix: /conda-envs/2e8e4401e9abbca04941f823d00fe74a
+#   prefix: /conda-envs/412b26c5be92a818771be78315fefb21
 #   name: corpus
 #   channels:
 #     - conda-forge
@@ -114,12 +115,13 @@ mkdir -p /conda-envs/a4f700aa6ff0256dcd9321b536a081ac
 #     - pip:
 #       - sacrebleu==2.0.0
 #       - mtdata==0.3.2
-#       - requests==2.26.0
-mkdir -p /conda-envs/2e8e4401e9abbca04941f823d00fe74a
+#       - datasets>=2.18,<5
+#       - requests>=2.31
+mkdir -p /conda-envs/412b26c5be92a818771be78315fefb21
 
 # Conda environment:
 #   source: envs/hf.yml
-#   prefix: /conda-envs/309accd08a3101887231a499217d2f47
+#   prefix: /conda-envs/e61af7fc5d4c1ae0eb95a4730a0c66e5
 #   name: huggingface
 #   channels:
 #     - conda-forge
@@ -130,17 +132,19 @@ mkdir -p /conda-envs/2e8e4401e9abbca04941f823d00fe74a
 #     - cmake=3.21.1
 #     - numpy<2.0.0
 #     - pip:
-#       - torch==2.3.1
-#       - torchvision==0.18.1
-#       - torchaudio==2.3.1
-#       - transformers==4.38.2
-#       - sentencepiece==0.1.99
+#       - torch==2.4.*
+#       - torchvision==0.19.*
+#       - torchaudio==2.4.*
+#       - transformers>=4.38.2
+#       - sentencepiece==0.1.99 
 #       - accelerate==0.31.0
 #       - git+https://github.com/VarunGumma/IndicTransToolkit
 #       - protobuf==5.28.2
 #       - tqdm==4.66.6
 #       - ctranslate2==4.5.0
-mkdir -p /conda-envs/309accd08a3101887231a499217d2f47
+#       - huggingface_hub>=1.4.1
+#       - numpy
+mkdir -p /conda-envs/e61af7fc5d4c1ae0eb95a4730a0c66e5
 
 # Conda environment:
 #   source: envs/tensorboard.yml
@@ -162,18 +166,18 @@ mkdir -p /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221
 
 # Step 2: Generate conda environments
 
-mamba env create --prefix /conda-envs/d6405a0f7a594ca32f87180568077d95 --file /conda-envs/d6405a0f7a594ca32f87180568077d95/environment.yaml && \
-mamba env create --prefix /conda-envs/6dc32b6f0731acf817ada219622a98b8 --file /conda-envs/6dc32b6f0731acf817ada219622a98b8/environment.yaml && \
+mamba env create --prefix /conda-envs/4f08ae7a76a48176f0c88460cad427c0 --file /conda-envs/4f08ae7a76a48176f0c88460cad427c0/environment.yaml && \
+mamba env create --prefix /conda-envs/07e7d3181eda50189aa149e237b63f57 --file /conda-envs/07e7d3181eda50189aa149e237b63f57/environment.yaml && \
 mamba env create --prefix /conda-envs/04b8248cb528961ad452c73dd0a7c8b6 --file /conda-envs/04b8248cb528961ad452c73dd0a7c8b6/environment.yaml && \
 mamba env create --prefix /conda-envs/a4f700aa6ff0256dcd9321b536a081ac --file /conda-envs/a4f700aa6ff0256dcd9321b536a081ac/environment.yaml && \
-mamba env create --prefix /conda-envs/2e8e4401e9abbca04941f823d00fe74a --file /conda-envs/2e8e4401e9abbca04941f823d00fe74a/environment.yaml && \
-mamba env create --prefix /conda-envs/309accd08a3101887231a499217d2f47 --file /conda-envs/309accd08a3101887231a499217d2f47/environment.yaml && \
+mamba env create --prefix /conda-envs/412b26c5be92a818771be78315fefb21 --file /conda-envs/412b26c5be92a818771be78315fefb21/environment.yaml && \
+mamba env create --prefix /conda-envs/e61af7fc5d4c1ae0eb95a4730a0c66e5 --file /conda-envs/e61af7fc5d4c1ae0eb95a4730a0c66e5/environment.yaml && \
 mamba env create --prefix /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221 --file /conda-envs/fadf1aec392d8a065ae29b9fcf9b3221/environment.yaml && \
 mamba clean --all -y
 
 #Bicleaner needs the fasttext language id model installed
 wget -O lid.176.bin https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
-cp lid.176.bin /conda-envs/6dc32b6f0731acf817ada219622a98b8/lib/python3.9/site-packages/fastspell/lid.176.bin
+cp lid.176.bin /conda-envs/07e7d3181eda50189aa149e237b63f57/lib/python3.9/site-packages/fastspell/lid.176.bin
 cp lid.176.bin /conda-envs/a4f700aa6ff0256dcd9321b536a081ac/lib/python3.8/site-packages/fastspell/lid.176.bin
 cp lid.176.bin /conda-envs/04b8248cb528961ad452c73dd0a7c8b6/lib/python3.9/site-packages/fastspell/lid.176.bin
  

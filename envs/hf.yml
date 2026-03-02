@@ -19,3 +19,4 @@ dependencies:
     - tqdm==4.66.6
     - ctranslate2==4.5.0
     - huggingface_hub>=1.4.1
+    - numpy
