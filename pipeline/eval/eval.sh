@@ -53,6 +53,10 @@ else
   echo "Translation already exists. Remove if you want to overwrite!"
 fi
 
+if [[ "$dataset_prefix" == *opusmt* ]]; then
+  sed -i 's/ //g; s/▁/ /g; s/^ //g' "${res_prefix}.${trg}"
+fi
+
 sacrebleu "${res_prefix}.${trg}.ref" -d -f text --score-only -l "${langpair}" -m bleu chrf < "${res_prefix}.${trg}" | tee "${res_prefix}.metrics"
 comet-score -s "${res_prefix}.${src}" -t "${res_prefix}.${trg}" -r "${res_prefix}.${trg}.ref" --quiet --only_system | tee -a "${res_prefix}.metrics"
 

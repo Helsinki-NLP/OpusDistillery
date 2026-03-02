@@ -68,6 +68,8 @@ elif push_to_hf: # The student won't be exported
     results = [
         *expand(f"{eval_student_dir}/{{langpair}}/{{dataset}}.metrics",
                 dataset=eval_datasets, langpair=langpairs),
+        *expand(f'{eval_res_dir}/teacher-base0-0/{{langpair}}/{{dataset}}.metrics',
+                dataset=eval_datasets, langpair=langpairs),
         f"{hf_dir}/generation_config.json",
     ]
 
@@ -591,15 +593,19 @@ if 'opusmt-teacher' in config['experiment']:
     if not isinstance(opusmt_teacher[0],dict):
         rule download_teacher_models:
             message: "Downloading OPUS-MT teacher model for {wildcards.langpair}"
-            log: f"{log_dir}/download_teacher_{{model_index}}-{{ens}}_{{langpair}}.log"
+            log: f"{log_dir}/download_teacher_0-0_{{langpair}}.log"
             conda: "envs/base.yml"
             threads: 1
-            output: model=f'{models_dir}/{{langpair}}/teacher-base{{model_index}}-{{ens}}/{best_model}',
-                    vocab=f'{models_dir}/{{langpair}}/teacher-base{{model_index}}-{{ens}}/vocab.yml',
-                    model_dir=directory(f'{models_dir}/{{langpair}}/teacher-base{{model_index}}-{{ens}}')
-            params: teacher_dir=f'{models_dir}/{{langpair}}/teacher-base{{model_index}}-{{ens}}',
+            output: model=f'{models_dir}/{{langpair}}/teacher-base0-0/{best_model}',
+                    vocab=f'{models_dir}/{{langpair}}/teacher-base0-0/vocab.yml',
+                    model_dir=directory(f'{models_dir}/{{langpair}}/teacher-base0-0')
+            params: teacher_dir=f'{models_dir}/{{langpair}}/teacher-base0-0',
                     # This assumes that if there are multiple teachers, each one corresponds to a language pair
-                    teacher_url=lambda wildcards: opusmt_teacher[int(wildcards.model_index)],
+                    teacher_url=lambda wildcards: (
+                        opusmt_teacher[0]
+                        if len(opusmt_teacher) == 1
+                        else opusmt_teacher[langpairs.index(wildcards.langpair)]
+                    ),
                     src_three_letter=lambda wildcards: Language.get(wildcards.langpair.split('-')[0]).to_alpha3(),
                     trg_three_letter=lambda wildcards: Language.get(wildcards.langpair.split('-')[1]).to_alpha3()
             shell: '''bash pipeline/opusmt/download-model.sh \
@@ -1228,7 +1234,7 @@ rule evaluate:
         ancient(decoder),
         data_src=expand(f'{eval_data_dir}/{{dataset}}.source.gz', dataset=eval_datasets, langpair=langpairs),
         data_trg=expand(f'{eval_data_dir}/{{dataset}}.target.gz', dataset=eval_datasets, langpair=langpairs),
-        models=lambda wildcards: f'{models_dir}/{wildcards.model}/{best_model}'
+        models=lambda wildcards: f'{models_dir}/{wilfdcards.model}/{best_model}'
                                     if wildcards.model != 'teacher-ensemble'
                                     else [f'{final_teacher_dir}0-{ens}/{best_model}' for ens in ensemble]
     output:
@@ -1298,7 +1304,10 @@ eval_config = {
     "quantized_model": rules.quantize.output.model,
     "shortlist": rules.alignments.output.shortlist,
     "vocab": vocab_path,
-    "eval_speed_dir": eval_speed_dir
+    "eval_speed_dir": eval_speed_dir,
+    "opusmt_teacher": opusmt_teacher,
+    "spm_encoder": spm_encoder,
+    "o2m_teacher": o2m_teacher
 }
 
 module evaluate:
