@@ -1,0 +1,50 @@
+####
+# Example of a production config
+# Change language pair, experiment name, datasets and other settings if needed
+# Training low resource languages might require more tuning of pipeline/training/configs
+###
+
+experiment:
+  dirname: opustranslate
+  name: spa-eng
+  langpairs:
+    - en-en
+
+  #URL to the OPUS-MT model to use as the teacher
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/spa-eng/opus-2020-08-18.zip"
+  
+  # Specify if the teacher and the student are many2one
+  one2many-teacher: False
+  one2many-student: False
+
+  #URL to the OPUS-MT model to use as the backward model
+  opusmt-backward: ""
+
+  push-to-hf: True
+  hf_token: <HF_TOKEN>
+
+  teacher-ensemble: 1
+  
+  split-length: 5000000
+  spm-sample-size: 2000000
+  parallel-max-sentences: 20000000
+  
+  best-model: perplexity
+
+  opusfilter:
+    config: default
+
+  marian-args:
+    training-student:
+      dec-cell: gru
+      transformer-decoder-autoreg: self-attention
+      
+datasets:
+  train:
+    - tc_Tatoeba-Challenge-v2023-09-26
+  devtest:
+    - flores_dev
+    - bouquet_dev
+  test:
+    - flores_devtest
+    - bouquet_test
