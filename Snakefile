@@ -70,7 +70,7 @@ elif push_to_hf: # The student won't be exported
                 dataset=eval_datasets, langpair=langpairs),
         *expand(f'{eval_res_dir}/teacher-base0-0/{{langpair}}/{{dataset}}.metrics',
                 dataset=eval_datasets, langpair=langpairs),
-        f"{hf_dir}/generation_config.json",
+        f"{hf_dir}/tokenizer_config.json",
     ]
 
     ruleorder: train_student_no_alignment > train_student
@@ -1207,7 +1207,7 @@ rule push_model_to_hf:
         model=rules.train_student_no_alignment.output.model,
         vocab=vocab_path
     output:
-        config=f"{hf_dir}/generation_config.json"
+        config=f"{hf_dir}/tokenizer_config.json"
     params:
         output_dir=hf_dir,
         token=hf_token

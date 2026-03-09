@@ -69,10 +69,10 @@ rule evaluate:
         report(f'{config["eval_res_dir"]}/{{model}}/{{langpair}}/{{dataset}}.metrics',
             category='evaluation', subcategory='{model}', caption='reports/evaluation.rst')
     params:
-        dataset_prefix = (
-            f'{config["eval_data_dir"]}/{{dataset}}.opusmt'
-            if config["opusmt_teacher"]
-            else f'{config["eval_data_dir"]}/{{dataset}}'
+        dataset_prefix=lambda wildcards: (
+            f'{config["eval_data_dir"]}/{wildcards.dataset}.opusmt'
+            if config["opusmt_teacher"] and "teacher" in wildcards.model
+            else f'{config["eval_data_dir"].format(langpair=wildcards.langpair)}/{wildcards.dataset}'
         ),
         res_prefix=f'{config["eval_res_dir"]}/{{model}}/{{langpair}}/{{dataset}}',
         src=lambda wildcards: wildcards.langpair.split('-')[0] if wildcards.model != "backward" else wildcards.langpair.split('-')[1],

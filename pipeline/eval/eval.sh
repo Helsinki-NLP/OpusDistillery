@@ -53,7 +53,7 @@ else
   echo "Translation already exists. Remove if you want to overwrite!"
 fi
 
-if [[ "$dataset_prefix" == *opusmt* ]]; then
+if [[ "$dataset_prefix" == *opusmt* && "$res_prefix" == *teacher* ]]; then
   sed -i 's/ //g; s/▁/ /g; s/^ //g' "${res_prefix}.${trg}"
 fi
 
