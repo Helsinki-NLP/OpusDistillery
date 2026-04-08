@@ -70,7 +70,7 @@ rule evaluate:
             category='evaluation', subcategory='{model}', caption='reports/evaluation.rst')
     params:
         dataset_prefix=lambda wildcards: (
-            f'{config["eval_data_dir"]}/{wildcards.dataset}.opusmt'
+            f'{config["eval_data_dir"].format(langpair=wildcards.langpair)}/{wildcards.dataset}.opusmt'
             if config["opusmt_teacher"] and "teacher" in wildcards.model
             else f'{config["eval_data_dir"].format(langpair=wildcards.langpair)}/{wildcards.dataset}'
         ),
