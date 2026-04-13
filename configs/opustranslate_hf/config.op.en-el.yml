@@ -6,12 +6,12 @@
 
 experiment:
   dirname: opustranslate
-  name: spa-eng
+  name: eng-ell
   langpairs:
-    - es-en
+    - en-el
 
   #URL to the OPUS-MT model to use as the teacher
-  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip"
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/eng-ell/opusTCv20210807+bt_transformer-big_2022-03-13.zip"
   
   # Specify if the teacher and the student are many2one
   one2many-teacher: False
@@ -27,21 +27,17 @@ experiment:
   
   split-length: 5000000
   spm-sample-size: 2000000
-  parallel-max-sentences: 20000000
+  parallel-max-sentences: 10000000
   
   best-model: perplexity
 
   opusfilter:
     config: default
-
-  marian-args:
-    training-student:
-      dec-cell: gru
-      transformer-decoder-autoreg: self-attention
       
 datasets:
   train:
     - tc_Tatoeba-Challenge-v2023-09-26
+    - opus_HPLT__v3
   devtest:
     - flores_dev
     - bouquet_dev

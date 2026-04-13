@@ -11,7 +11,7 @@ experiment:
     - en-es
 
   #URL to the OPUS-MT model to use as the teacher
-  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/eng-spa/opus-2020-08-18.zip"
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/eng-spa/opusTCv20210807+bt_transformer-big_2022-03-13.zip"
   
   # Specify if the teacher and the student are many2one
   one2many-teacher: False

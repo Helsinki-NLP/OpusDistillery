@@ -6,12 +6,12 @@
 
 experiment:
   dirname: opustranslate
-  name: spa-eng
+  name: spa-eus
   langpairs:
-    - es-en
+    - es-eu
 
   #URL to the OPUS-MT model to use as the teacher
-  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip"
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/itc-eus/opusTCv20210807_transformer-big_2022-07-23.zip"
   
   # Specify if the teacher and the student are many2one
   one2many-teacher: False
@@ -44,7 +44,5 @@ datasets:
     - tc_Tatoeba-Challenge-v2023-09-26
   devtest:
     - flores_dev
-    - bouquet_dev
   test:
     - flores_devtest
-    - bouquet_test

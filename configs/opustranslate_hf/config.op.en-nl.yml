@@ -6,15 +6,15 @@
 
 experiment:
   dirname: opustranslate
-  name: spa-eng
+  name: eng-nld
   langpairs:
-    - es-en
+    - en-nl
 
   #URL to the OPUS-MT model to use as the teacher
-  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip"
+  opusmt-teacher: "https://object.pouta.csc.fi/Tatoeba-MT-models/deu+eng+fra+por+spa-gmw/opusTCv20230926max50+bt+jhubc_transformer-big_2024-05-30.zip"
   
   # Specify if the teacher and the student are many2one
-  one2many-teacher: False
+  one2many-teacher: True
   one2many-student: False
 
   #URL to the OPUS-MT model to use as the backward model
@@ -33,11 +33,6 @@ experiment:
 
   opusfilter:
     config: default
-
-  marian-args:
-    training-student:
-      dec-cell: gru
-      transformer-decoder-autoreg: self-attention
       
 datasets:
   train:

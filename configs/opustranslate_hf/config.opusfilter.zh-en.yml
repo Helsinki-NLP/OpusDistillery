@@ -1,0 +1,14 @@
+LengthFilter:
+      unit: char
+      min_length: 3
+      max_length: 300
+LengthRatioFilter:
+      unit: char
+      threshold: 5
+AlphabetRatioFilter: {}
+LanguageIDFilter:
+    id_method: cld2
+    languages: ['zh', 'en']
+NonZeroNumeralsFilter: {}
+TerminalPunctuationFilter: {}
+RepetitionFilter: {}
